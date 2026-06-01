@@ -95,6 +95,9 @@ echo "[INFO] Instalando Hex e Rebar..."
 mix local.hex --force
 mix local.rebar --force
 
+echo "[INFO] Instalando dependencias Python..."
+python3 -m pip install --user opendatasets
+
 ERL_INCLUDE_DIR="$(find "$ASDF_DIR/installs/erlang/$ERLANG_VERSION" -name erl_nif.h -print -quit 2>/dev/null | xargs -r dirname)"
 
 if [ -z "$ERL_INCLUDE_DIR" ] || [ ! -f "$ERL_INCLUDE_DIR/erl_nif.h" ]; then
