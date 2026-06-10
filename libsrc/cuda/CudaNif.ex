@@ -32,9 +32,29 @@ defmodule CudaNif do
     :erlang.nif_error(:nif_not_loaded)
   end
 
+  def train_batch_binary(
+        _model,
+        _train_x_bin,
+        _train_y_bin,
+        _batch_count,
+        _input_size,
+        _learn_rate
+      ) do
+    :erlang.nif_error(:nif_not_loaded)
+  end
+
   def predict_batch(
         _model,
         _x_flat,
+        _batch_count,
+        _input_size
+      ) do
+    :erlang.nif_error(:nif_not_loaded)
+  end
+
+  def predict_batch_binary(
+        _model,
+        _x_bin,
         _batch_count,
         _input_size
       ) do

@@ -88,7 +88,16 @@ static void PrintDebugSnapshot(int epoch,
 MLPClassifierNIF::MLPClassifierNIF(const std::vector<int>& layers,
                                    const std::vector<float>& flatWeights,
                                    const std::vector<float>& flatBiases)
-    : m_Initialized(false), m_LayerCount(0), m_cuMLPLayer(NULL)
+    : m_Initialized(false),
+      m_BatchCapacity(0),
+      m_cuMLPLayer(NULL),
+      m_cuGradW(NULL),
+      m_cuGradB(NULL),
+      m_cuAct(NULL),
+      m_cuDelta(NULL),
+      m_cuBatchX(NULL),
+      m_cuBatchY(NULL),
+      m_cuResults(NULL)
 {
     memset(m_cuWeightsPtr, 0, sizeof(m_cuWeightsPtr));
     memset(m_cuBiasesPtr,  0, sizeof(m_cuBiasesPtr));
@@ -100,13 +109,18 @@ MLPClassifierNIF::MLPClassifierNIF(const std::vector<int>& layers,
         return;
     }
 
-    m_LayerCount               = (int)layers.size();
-    m_MLPLayer.m_LayerCount    = m_LayerCount;
+    if (layers.size() < 2 || layers.size() > MAX_LAYER)
+    {
+        std::fprintf(stderr, "Topologia deve possuir entre 2 e %d camadas.\n", MAX_LAYER);
+        return;
+    }
+
+    m_MLPLayer.m_LayerCount    = (int)layers.size();
     m_MLPLayer.m_TotalNeurons  = 0;
     m_MLPLayer.m_TotalWeights  = 0;
     m_MLPLayer.m_TotalBiases   = 0;
 
-    for (int i = 0; i < m_LayerCount; ++i)
+    for (int i = 0; i < m_MLPLayer.m_LayerCount; ++i)
     {
         m_MLPLayer.m_Layers[i]       = layers[i];
         m_MLPLayer.m_NeuronOffset[i] = m_MLPLayer.m_TotalNeurons;
@@ -121,42 +135,28 @@ MLPClassifierNIF::MLPClassifierNIF(const std::vector<int>& layers,
         }
     }
 
-    float* hostWeights[MAX_LAYER];
-    float* hostBiases[MAX_LAYER];
-    memset(hostWeights, 0, sizeof(hostWeights));
-    memset(hostBiases,  0, sizeof(hostBiases));
+    cudaError_t cuErr = cudaMalloc((void**)&m_cuGradW, sizeof(float) * m_MLPLayer.m_TotalWeights);
+    if (cuErr != cudaSuccess) goto cleanup;
 
-    for (int l = 1; l < m_LayerCount; ++l)
-    {
-        const int prevSize = layers[l - 1];
-        const int currSize = layers[l];
-        const int wCount   = prevSize * currSize;
-        const int wOff     = m_MLPLayer.m_WeightOffset[l];
-        const int bOff     = m_MLPLayer.m_BiasOffset[l];
+    cuErr = cudaMalloc((void**)&m_cuGradB, sizeof(float) * m_MLPLayer.m_TotalBiases);
+    if (cuErr != cudaSuccess) goto cleanup;
 
-        hostBiases[l] = new float[currSize];
-        hostWeights[l] = new float[wCount];
-
-        for (int n = 0; n < wCount; ++n)
-            hostWeights[l][n] = flatWeights[wOff + n];
-
-        for (int n = 0; n < currSize; ++n)
-            hostBiases[l][n] = flatBiases[bOff + n];
-    }
-
-    cudaError_t cuErr = cudaMalloc((void**)&m_cuMLPLayer, sizeof(MLPLayer));
+    cuErr = cudaMalloc((void**)&m_cuMLPLayer, sizeof(MLPLayer));
     if (cuErr != cudaSuccess)
     {
         std::fprintf(stderr, "cudaMalloc (MLPLayer): %s\n", cudaGetErrorString(cuErr));
         goto cleanup;
     }
 
-    for (int l = 1; l < m_LayerCount; ++l)
+    for (int l = 1; l < m_MLPLayer.m_LayerCount; ++l)
     {
+        const int weightOffset = m_MLPLayer.m_WeightOffset[l];
+        const int biasOffset = m_MLPLayer.m_BiasOffset[l];
+
         cuErr = cudaMalloc((void**)&m_cuBiasesPtr[l],  sizeof(float) * layers[l]);
         if (cuErr != cudaSuccess) goto cleanup;
 
-        cuErr = cudaMemcpy(m_cuBiasesPtr[l], hostBiases[l],
+        cuErr = cudaMemcpy(m_cuBiasesPtr[l], flatBiases.data() + biasOffset,
                            sizeof(float) * layers[l], cudaMemcpyHostToDevice);
         if (cuErr != cudaSuccess) goto cleanup;
 
@@ -164,25 +164,17 @@ MLPClassifierNIF::MLPClassifierNIF(const std::vector<int>& layers,
                            sizeof(float) * layers[l - 1] * layers[l]);
         if (cuErr != cudaSuccess) goto cleanup;
 
-        cuErr = cudaMemcpy(m_cuWeightsPtr[l], hostWeights[l],
+        cuErr = cudaMemcpy(m_cuWeightsPtr[l], flatWeights.data() + weightOffset,
                            sizeof(float) * layers[l - 1] * layers[l],
                            cudaMemcpyHostToDevice);
         if (cuErr != cudaSuccess) goto cleanup;
+
+        m_MLPLayer.m_Weights[l] = m_cuWeightsPtr[l];
+        m_MLPLayer.m_Biases[l] = m_cuBiasesPtr[l];
     }
 
     cuErr = cudaMemcpy(m_cuMLPLayer, &m_MLPLayer, sizeof(MLPLayer), cudaMemcpyHostToDevice);
     if (cuErr != cudaSuccess) goto cleanup;
-
-    for (int l = 1; l < m_LayerCount; ++l)
-    {
-        cuErr = cudaMemcpy(&m_cuMLPLayer->m_Weights[l], &m_cuWeightsPtr[l],
-                           sizeof(float*), cudaMemcpyHostToDevice);
-        if (cuErr != cudaSuccess) goto cleanup;
-
-        cuErr = cudaMemcpy(&m_cuMLPLayer->m_Biases[l], &m_cuBiasesPtr[l],
-                           sizeof(float*), cudaMemcpyHostToDevice);
-        if (cuErr != cudaSuccess) goto cleanup;
-    }
 
     m_Initialized = true;
 
@@ -191,70 +183,89 @@ MLPClassifierNIF::MLPClassifierNIF(const std::vector<int>& layers,
         if (dbgEnv != NULL && dbgEnv[0] == '1')
         {
             std::printf("[DEBUG] Pesos iniciais\n");
-            for (int l = 1; l < m_LayerCount; ++l)
+            for (int l = 1; l < m_MLPLayer.m_LayerCount; ++l)
             {
                 const int take = std::min(4, layers[l - 1] * layers[l]);
                 std::printf("[DEBUG] Layer %d:", l);
                 for (int k = 0; k < take; ++k)
-                    std::printf(" %.6f", hostWeights[l][k]);
+                    std::printf(" %.6f", flatWeights[m_MLPLayer.m_WeightOffset[l] + k]);
                 std::printf("\n");
             }
         }
     }
 
 cleanup:
-    for (int l = 1; l < m_LayerCount; ++l)
-    {
-        delete[] hostWeights[l];
-        delete[] hostBiases[l];
-    }
-
     if (!m_Initialized)
         std::fprintf(stderr, "Falha na inicializacao: %s\n", cudaGetErrorString(cuErr));
 }
 
 MLPClassifierNIF::~MLPClassifierNIF()
 {
-    if (m_Initialized)
+    if (m_cuMLPLayer)
+        cudaFree(m_cuMLPLayer);
+
+    for (int l = 1; l < MAX_LAYER; ++l)
     {
-        if (m_cuMLPLayer)
-            cudaFree(m_cuMLPLayer);
-
-        for (int l = 1; l < MAX_LAYER; ++l)
-        {
-            if (m_cuBiasesPtr[l])  cudaFree(m_cuBiasesPtr[l]);
-            if (m_cuWeightsPtr[l]) cudaFree(m_cuWeightsPtr[l]);
-        }
-
-        if (cudaDeviceReset() != cudaSuccess)
-            std::fprintf(stderr, "cudaDeviceReset falhou.\n");
+        if (m_cuBiasesPtr[l])  cudaFree(m_cuBiasesPtr[l]);
+        if (m_cuWeightsPtr[l]) cudaFree(m_cuWeightsPtr[l]);
     }
+
+    if (m_cuGradW)   cudaFree(m_cuGradW);
+    if (m_cuGradB)   cudaFree(m_cuGradB);
+    if (m_cuAct)     cudaFree(m_cuAct);
+    if (m_cuDelta)   cudaFree(m_cuDelta);
+    if (m_cuBatchX)  cudaFree(m_cuBatchX);
+    if (m_cuBatchY)  cudaFree(m_cuBatchY);
+    if (m_cuResults) cudaFree(m_cuResults);
 }
 
-void MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
+bool MLPClassifierNIF::EnsureBatchCapacity(int batchCount)
+{
+    if (batchCount <= m_BatchCapacity)
+        return true;
+
+    if (m_cuAct)     cudaFree(m_cuAct);
+    if (m_cuDelta)   cudaFree(m_cuDelta);
+    if (m_cuBatchX)  cudaFree(m_cuBatchX);
+    if (m_cuBatchY)  cudaFree(m_cuBatchY);
+    if (m_cuResults) cudaFree(m_cuResults);
+
+    m_cuAct = m_cuDelta = m_cuBatchX = m_cuBatchY = m_cuResults = NULL;
+    m_BatchCapacity = 0;
+
+    const int inputSize = m_MLPLayer.m_Layers[0];
+    const int outputSize = m_MLPLayer.m_Layers[m_MLPLayer.m_LayerCount - 1];
+    const int totalNeurons = m_MLPLayer.m_TotalNeurons;
+
+    if (cudaMalloc(&m_cuAct, sizeof(float) * totalNeurons * batchCount) != cudaSuccess ||
+        cudaMalloc(&m_cuDelta, sizeof(float) * totalNeurons * batchCount) != cudaSuccess ||
+        cudaMalloc(&m_cuBatchX, sizeof(float) * inputSize * batchCount) != cudaSuccess ||
+        cudaMalloc(&m_cuBatchY, sizeof(float) * batchCount) != cudaSuccess ||
+        cudaMalloc(&m_cuResults, sizeof(float) * outputSize * batchCount) != cudaSuccess)
+    {
+        std::fprintf(stderr, "Falha ao alocar buffers CUDA para %d amostras.\n", batchCount);
+        if (m_cuAct)     cudaFree(m_cuAct);
+        if (m_cuDelta)   cudaFree(m_cuDelta);
+        if (m_cuBatchX)  cudaFree(m_cuBatchX);
+        if (m_cuBatchY)  cudaFree(m_cuBatchY);
+        if (m_cuResults) cudaFree(m_cuResults);
+        m_cuAct = m_cuDelta = m_cuBatchX = m_cuBatchY = m_cuResults = NULL;
+        return false;
+    }
+
+    m_BatchCapacity = batchCount;
+    return true;
+}
+
+bool MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
                                   int batchCount, float learnRate)
 {
-    if (!m_Initialized || batchCount <= 0)
-        return;
+    if (!m_Initialized || batchCount <= 0 || !EnsureBatchCapacity(batchCount))
+        return false;
 
     const int inputSize    = m_MLPLayer.m_Layers[0];
-    const int totalNeurons = m_MLPLayer.m_TotalNeurons;
     const int totalWeights = m_MLPLayer.m_TotalWeights;
     const int totalBiases  = m_MLPLayer.m_TotalBiases;
-
-    float *cu_gradW  = NULL, *cu_gradB  = NULL;
-    float *cu_act    = NULL, *cu_delta  = NULL;
-    float *cu_batchX = NULL, *cu_batchY = NULL;
-
-    cudaMalloc(&cu_gradW,  sizeof(float) * totalWeights);
-    cudaMalloc(&cu_gradB,  sizeof(float) * totalBiases);
-    cudaMalloc(&cu_act,    sizeof(float) * totalNeurons * batchCount);
-    cudaMalloc(&cu_delta,  sizeof(float) * totalNeurons * batchCount);
-    cudaMalloc(&cu_batchX, sizeof(float) * inputSize    * batchCount);
-    cudaMalloc(&cu_batchY, sizeof(float) * batchCount);
-
-    float* hBatchX = new float[(size_t)inputSize * batchCount];
-    float* hBatchY = new float[batchCount];
 
     const char* dbgEnv = std::getenv("BACKPROP_DEBUG");
     const bool  debug  = (dbgEnv != NULL && dbgEnv[0] == '1');
@@ -264,24 +275,16 @@ void MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
     if (debug)
         PrintDebugSnapshot(0, m_MLPLayer, m_cuWeightsPtr, m_cuBiasesPtr, NULL, NULL, debugCount);
 
-    cudaMemset(cu_gradW, 0, sizeof(float) * totalWeights);
-    cudaMemset(cu_gradB, 0, sizeof(float) * totalBiases);
+    cudaMemset(m_cuGradW, 0, sizeof(float) * totalWeights);
+    cudaMemset(m_cuGradB, 0, sizeof(float) * totalBiases);
 
-    for (int f = 0; f < inputSize; ++f)
-        for (int s = 0; s < batchCount; ++s)
-            hBatchX[f * batchCount + s] = trainx[s * inputSize + f];
+    cudaMemcpy(m_cuBatchX, trainx, sizeof(float) * inputSize * batchCount, cudaMemcpyHostToDevice);
+    cudaMemcpy(m_cuBatchY, trainy, sizeof(float) * batchCount, cudaMemcpyHostToDevice);
 
-    for (int s = 0; s < batchCount; ++s)
-        hBatchY[s] = trainy[s];
+    LaunchFitKernel(m_cuMLPLayer, m_cuBatchX, m_cuBatchY,
+                    batchCount, m_cuAct, m_cuDelta, m_cuGradW, m_cuGradB);
 
-    cudaMemcpy(cu_batchX, hBatchX, sizeof(float) * inputSize * batchCount, cudaMemcpyHostToDevice);
-    cudaMemcpy(cu_batchY, hBatchY, sizeof(float) * batchCount,             cudaMemcpyHostToDevice);
-
-    LaunchFitKernel(m_cuMLPLayer, cu_batchX, cu_batchY,
-                    batchCount, cu_act, cu_delta, cu_gradW, cu_gradB);
-    cudaDeviceSynchronize();
-
-    for (int l = 1; l < m_LayerCount; ++l)
+    for (int l = 1; l < m_MLPLayer.m_LayerCount; ++l)
     {
         const int wCount = m_MLPLayer.m_Layers[l - 1] * m_MLPLayer.m_Layers[l];
         const int bCount = m_MLPLayer.m_Layers[l];
@@ -290,16 +293,18 @@ void MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
 
         LaunchUpdateWeightsKernel(
             m_cuWeightsPtr[l], m_cuBiasesPtr[l],
-            cu_gradW + wOff,   cu_gradB + bOff,
+            m_cuGradW + wOff,  m_cuGradB + bOff,
             wCount, bCount, learnRate, batchCount);
     }
-    cudaDeviceSynchronize();
+
+    if (cudaDeviceSynchronize() != cudaSuccess)
+        return false;
 
     if (debug)
     {
-        PrintDebugSnapshot(1, m_MLPLayer, m_cuWeightsPtr, m_cuBiasesPtr, cu_gradW, cu_gradB, debugCount);
+        PrintDebugSnapshot(1, m_MLPLayer, m_cuWeightsPtr, m_cuBiasesPtr, m_cuGradW, m_cuGradB, debugCount);
         std::printf("[DEBUG] Batch treinado\n");
-        for (int l = 1; l < m_LayerCount; ++l)
+        for (int l = 1; l < m_MLPLayer.m_LayerCount; ++l)
         {
             const int wCount = m_MLPLayer.m_Layers[l - 1] * m_MLPLayer.m_Layers[l];
             const int take   = wCount < 4 ? wCount : 4;
@@ -311,59 +316,27 @@ void MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
         }
     }
 
-    delete[] hBatchX;
-    delete[] hBatchY;
-
-    cudaFree(cu_gradW);
-    cudaFree(cu_gradB);
-    cudaFree(cu_act);
-    cudaFree(cu_delta);
-    cudaFree(cu_batchX);
-    cudaFree(cu_batchY);
+    return true;
 }
 
 float* MLPClassifierNIF::Predict(float* testx, int testCount)
 {
-    if (!m_Initialized)
+    if (!m_Initialized || testCount <= 0 || !EnsureBatchCapacity(testCount))
         return NULL;
 
     const int inputSize    = m_MLPLayer.m_Layers[0];
-    const int outputSize   = m_MLPLayer.m_Layers[m_LayerCount - 1];
-    const int totalNeurons = m_MLPLayer.m_TotalNeurons;
-
+    const int outputSize   = m_MLPLayer.m_Layers[m_MLPLayer.m_LayerCount - 1];
     float* results = new float[(size_t)testCount * outputSize];
 
-    float *cu_act     = NULL;
-    float *cu_batchX  = NULL;
-    float *cu_results = NULL;
+    cudaMemcpy(m_cuBatchX, testx, sizeof(float) * inputSize * testCount, cudaMemcpyHostToDevice);
 
-    cudaMalloc(&cu_act,     sizeof(float) * totalNeurons * testCount);
-    cudaMalloc(&cu_batchX,  sizeof(float) * inputSize    * testCount);
-    cudaMalloc(&cu_results, sizeof(float) * outputSize   * testCount);
+    LaunchPredictKernel(m_cuMLPLayer, m_cuBatchX, m_cuResults, testCount, m_cuAct);
 
-    float* hBatchX  = new float[(size_t)inputSize  * testCount];
-    float* hResults = new float[(size_t)outputSize * testCount];
-
-    for (int f = 0; f < inputSize; ++f)
-        for (int s = 0; s < testCount; ++s)
-            hBatchX[f * testCount + s] = testx[s * inputSize + f];
-
-    cudaMemcpy(cu_batchX, hBatchX, sizeof(float) * inputSize * testCount, cudaMemcpyHostToDevice);
-
-    LaunchPredictKernel(m_cuMLPLayer, cu_batchX, cu_results, testCount, cu_act);
-    cudaDeviceSynchronize();
-
-    cudaMemcpy(hResults, cu_results, sizeof(float) * outputSize * testCount, cudaMemcpyDeviceToHost);
-    for (int s = 0; s < testCount; ++s)
-        for (int j = 0; j < outputSize; ++j)
-            results[s * outputSize + j] = hResults[j * testCount + s];
-
-    delete[] hBatchX;
-    delete[] hResults;
-
-    cudaFree(cu_act);
-    cudaFree(cu_batchX);
-    cudaFree(cu_results);
+    if (cudaMemcpy(results, m_cuResults, sizeof(float) * outputSize * testCount, cudaMemcpyDeviceToHost) != cudaSuccess)
+    {
+        delete[] results;
+        return NULL;
+    }
 
     return results;
 }

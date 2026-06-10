@@ -29,16 +29,26 @@ public:
                      const std::vector<float>& flatBiases);
     ~MLPClassifierNIF();
 
-    void TrainBatch(float* trainx, float* trainy, int batchCount, float learnRate);
+    bool TrainBatch(float* trainx, float* trainy, int batchCount, float learnRate);
     float* Predict(float* testx, int testCount);
 
 private:
+    bool EnsureBatchCapacity(int batchCount);
+
     bool m_Initialized;
-    int  m_LayerCount;
+    int  m_BatchCapacity;
 
     MLPLayer  m_MLPLayer;
     MLPLayer* m_cuMLPLayer;
 
     float* m_cuWeightsPtr[MAX_LAYER];
     float* m_cuBiasesPtr[MAX_LAYER];
+
+    float* m_cuGradW;
+    float* m_cuGradB;
+    float* m_cuAct;
+    float* m_cuDelta;
+    float* m_cuBatchX;
+    float* m_cuBatchY;
+    float* m_cuResults;
 };

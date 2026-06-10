@@ -81,15 +81,73 @@ defmodule MLPClassifierHost do
         |> Nx.reshape({1, length(flat_train_y)})
       )
 
+    train_gpu_batch(state, gpu_train_x, gpu_train_y, batch.count, learning_rate)
+  end
+
+  def train_binary_batch_state(state, batch, learning_rate) do
+    gpu_train_x =
+      batch.features_bin |> float_tensor(batch.count * batch.n_features) |> PolyHok.new_gnx()
+
+    gpu_train_y = batch.labels_bin |> float_tensor(batch.count) |> PolyHok.new_gnx()
+
+    train_gpu_batch(state, gpu_train_x, gpu_train_y, batch.count, learning_rate)
+  end
+
+  def predict_batch_state(state, %Dataset.Batch{} = batch) do
+    flat_batch_x = Enum.flat_map(batch.features, & &1)
+
+    gpu_batch_x =
+      PolyHok.new_gnx(
+        Nx.tensor([flat_batch_x], type: {:f, 32})
+        |> Nx.reshape({1, length(flat_batch_x)})
+      )
+
+    gpu_output = PolyHok.new_gnx(1, batch.count, {:f, 32})
+    predict_gpu_batch(state, gpu_batch_x, gpu_output, batch.count)
+  end
+
+  def predict_binary_batch_state(state, batch, gpu_output) do
+    gpu_batch_x =
+      batch.features_bin |> float_tensor(batch.count * batch.n_features) |> PolyHok.new_gnx()
+
+    predict_gpu_batch(state, gpu_batch_x, gpu_output, batch.count)
+  end
+
+  defp predict_gpu_batch(state, gpu_batch_x, gpu_output, batch_count) do
+    # Prediz o batch:
+    PolyHok.spawn_st(
+      &MLPClassifierDevice.predict_batch_kernel/11,
+      {div(batch_count + 255, 256), 1, 1},
+      {256, 1, 1},
+      [
+        state.gpu_weights,
+        state.gpu_biases,
+        gpu_batch_x,
+        gpu_output,
+        state.gpu_layers,
+        state.gpu_weight_offsets,
+        state.gpu_bias_offsets,
+        state.gpu_neuron_offsets,
+        length(state.layers),
+        hd(state.layers),
+        batch_count
+      ]
+    )
+
+    gpu_output
+    |> PolyHok.get_gnx()
+    |> Nx.to_flat_list()
+    |> Enum.take(batch_count)
+    |> Enum.map(fn prob -> if prob >= 0.5, do: 1, else: 0 end)
+  end
+
+  defp train_gpu_batch(state, gpu_train_x, gpu_train_y, batch_count, learning_rate) do
     # Zera gradientes dos pesos:
     PolyHok.spawn_st(
       &MLPClassifierDevice.zero_kernel/2,
       {div(state.total_weights + 255, 256), 1, 1},
       {256, 1, 1},
-      [
-        state.gpu_grad_w,
-        state.total_weights
-      ]
+      [state.gpu_grad_w, state.total_weights]
     )
 
     # Zera gradientes dos biases:
@@ -97,16 +155,13 @@ defmodule MLPClassifierHost do
       &MLPClassifierDevice.zero_kernel/2,
       {div(state.total_biases + 255, 256), 1, 1},
       {256, 1, 1},
-      [
-        state.gpu_grad_b,
-        state.total_biases
-      ]
+      [state.gpu_grad_b, state.total_biases]
     )
 
     # Treina o batch:
     PolyHok.spawn_st(
-      &MLPClassifierDevice.train_batch_kernel/14,
-      {div(batch.count + 255, 256), 1, 1},
+      &MLPClassifierDevice.train_batch_kernel/13,
+      {div(batch_count + 255, 256), 1, 1},
       {256, 1, 1},
       [
         state.gpu_weights,
@@ -121,8 +176,7 @@ defmodule MLPClassifierHost do
         state.gpu_neuron_offsets,
         length(state.layers),
         hd(state.layers),
-        batch.count,
-        state.total_neurons
+        batch_count
       ]
     )
 
@@ -131,13 +185,7 @@ defmodule MLPClassifierHost do
       &MLPClassifierDevice.apply_mean_update_kernel/5,
       {div(state.total_weights + 255, 256), 1, 1},
       {256, 1, 1},
-      [
-        state.gpu_weights,
-        state.gpu_grad_w,
-        learning_rate,
-        batch.count,
-        state.total_weights
-      ]
+      [state.gpu_weights, state.gpu_grad_w, learning_rate, batch_count, state.total_weights]
     )
 
     # Atualiza biases:
@@ -145,47 +193,15 @@ defmodule MLPClassifierHost do
       &MLPClassifierDevice.apply_mean_update_kernel/5,
       {div(state.total_biases + 255, 256), 1, 1},
       {256, 1, 1},
-      [state.gpu_biases, state.gpu_grad_b, learning_rate, batch.count, state.total_biases]
+      [state.gpu_biases, state.gpu_grad_b, learning_rate, batch_count, state.total_biases]
     )
 
     state
   end
 
-  def predict_batch_state(state, %Dataset.Batch{} = batch) do
-    flat_batch_x = Enum.flat_map(batch.features, & &1)
-
-    gpu_batch_x =
-      PolyHok.new_gnx(
-        Nx.tensor([flat_batch_x], type: {:f, 32})
-        |> Nx.reshape({1, length(flat_batch_x)})
-      )
-
-    gpu_output = PolyHok.new_gnx(1, batch.count, {:f, 32})
-
-    # Prediz o batch:
-    PolyHok.spawn_st(
-      &MLPClassifierDevice.predict_batch_kernel/12,
-      {div(batch.count + 255, 256), 1, 1},
-      {256, 1, 1},
-      [
-        state.gpu_weights,
-        state.gpu_biases,
-        gpu_batch_x,
-        gpu_output,
-        state.gpu_layers,
-        state.gpu_weight_offsets,
-        state.gpu_bias_offsets,
-        state.gpu_neuron_offsets,
-        length(state.layers),
-        hd(state.layers),
-        batch.count,
-        state.total_neurons
-      ]
-    )
-
-    gpu_output
-    |> PolyHok.get_gnx()
-    |> Nx.to_flat_list()
-    |> Enum.map(fn prob -> if prob >= 0.5, do: 1, else: 0 end)
+  defp float_tensor(binary, size) do
+    binary
+    |> Nx.from_binary({:f, 32})
+    |> Nx.reshape({1, size})
   end
 end

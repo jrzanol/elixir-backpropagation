@@ -69,11 +69,11 @@ def numeric_value(value: str) -> float | None:
         return None
 
 
-def parse_label(value: str) -> float:
+def parse_label(value: str, positive_threshold: float) -> float:
     parsed = numeric_value(value)
     if parsed is None:
         parsed = 0.0
-    return 1.0 if parsed > 0.5 else 0.0
+    return 1.0 if parsed > positive_threshold else 0.0
 
 
 def detect_target(header: list[str], target_column: str | None) -> int:
@@ -198,7 +198,8 @@ def materialize(
     train_ratio: float,
     seed: int,
     batch_size: int,
-) -> tuple[int, int]:
+    positive_threshold: float,
+) -> tuple[int, int, int, int, int, int]:
     train_dir = output_dir / "train"
     test_dir = output_dir / "test"
     train_dir.mkdir(parents=True, exist_ok=True)
@@ -210,6 +211,10 @@ def materialize(
     test_labels: list[float] = []
     train_batch_index = 0
     test_batch_index = 0
+    train_positive = 0
+    train_negative = 0
+    test_positive = 0
+    test_negative = 0
 
     with csv_path.open("r", newline="", encoding="utf-8-sig") as handle:
         reader = csv.reader(handle)
@@ -221,9 +226,14 @@ def materialize(
 
             features = encode_row(row, feature_indices, scan["label_maps"])
             features = normalize_row(features, scan["mins"], scan["maxs"])
-            label = parse_label(row[target_index])
+            label = parse_label(row[target_index], positive_threshold)
 
             if train_row(row_index, train_ratio, seed):
+                if label > 0.5:
+                    train_positive += 1
+                else:
+                    train_negative += 1
+
                 train_rows.append(features)
                 train_labels.append(label)
 
@@ -233,6 +243,11 @@ def materialize(
                     train_rows = []
                     train_labels = []
             else:
+                if label > 0.5:
+                    test_positive += 1
+                else:
+                    test_negative += 1
+
                 test_rows.append(features)
                 test_labels.append(label)
 
@@ -250,7 +265,7 @@ def materialize(
         write_batch(test_dir / f"{test_batch_index}.bpbatch", test_rows, test_labels, len(feature_indices))
         test_batch_index += 1
 
-    return train_batch_index, test_batch_index
+    return train_batch_index, test_batch_index, train_positive, train_negative, test_positive, test_negative
 
 
 def write_metadata(output_dir: Path, values: dict[str, object]) -> None:
@@ -267,6 +282,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--train-ratio", type=float, default=0.8)
     parser.add_argument("--batch-size", type=int, default=8192)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--positive-threshold", type=float, default=0.5)
     parser.add_argument("--force", action="store_true", help="Remove o diretorio de saida antes de gerar.")
     return parser.parse_args()
 
@@ -298,7 +314,7 @@ def main() -> None:
 
     print("Segunda passada: normalizando e gravando batches binarios...")
     materialize_started = time.perf_counter()
-    train_batches, test_batches = materialize(
+    train_batches, test_batches, train_positive, train_negative, test_positive, test_negative = materialize(
         csv_path,
         output_dir,
         feature_indices,
@@ -307,6 +323,7 @@ def main() -> None:
         args.train_ratio,
         args.seed,
         args.batch_size,
+        args.positive_threshold,
     )
     print(f"materialize_seconds={time.perf_counter() - materialize_started:.3f}")
 
@@ -322,6 +339,11 @@ def main() -> None:
             "train_ratio": args.train_ratio,
             "seed": args.seed,
             "batch_size": args.batch_size,
+            "positive_threshold": args.positive_threshold,
+            "train_positive": train_positive,
+            "train_negative": train_negative,
+            "test_positive": test_positive,
+            "test_negative": test_negative,
             "train_batch_count": train_batches,
             "test_batch_count": test_batches,
         },
@@ -330,6 +352,8 @@ def main() -> None:
     print(f"total_seconds={time.perf_counter() - started:.3f}")
     print(f"output={output_dir}")
     print(f"train_count={scan['train_count']} test_count={scan['test_count']}")
+    print(f"train_positive={train_positive} train_negative={train_negative}")
+    print(f"test_positive={test_positive} test_negative={test_negative}")
     print(f"train_batches={train_batches} test_batches={test_batches}")
 
 

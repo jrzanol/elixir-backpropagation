@@ -27,119 +27,6 @@ PolyHok.defmodule_st MLPClassifierDevice do
     return(result)
   end
 
-  # Forward de uma camada oculta com ReLU: Cada thread calcula o net de UM neuronio j da camada atual.
-  deft(forward_relu_kernel(tfloat ~> tfloat ~> tfloat ~> tfloat ~> integer ~> integer ~> unit))
-
-  defk forward_relu_kernel(weights, input, biases, output, prev_size, curr_size) do
-    j = blockIdx.x * blockDim.x + threadIdx.x
-
-    if j < curr_size do
-      net = biases[j]
-
-      for i in range(0, prev_size, 1) do
-        net = net + weights[i * curr_size + j] * input[i]
-      end
-
-      output[j] = relu(net)
-    end
-  end
-
-  # Forward da camada de saida com sigmoide.
-  deft(forward_sigmoid_kernel(tfloat ~> tfloat ~> tfloat ~> tfloat ~> integer ~> integer ~> unit))
-
-  defk forward_sigmoid_kernel(weights, input, biases, output, prev_size, curr_size) do
-    j = blockIdx.x * blockDim.x + threadIdx.x
-
-    if j < curr_size do
-      net = biases[j]
-
-      for i in range(0, prev_size, 1) do
-        net = net + weights[i * curr_size + j] * input[i]
-      end
-
-      output[j] = sigmoid(net)
-    end
-  end
-
-  # delta_j^L = yhat_j - y_j   (cross-entropy + sigmoide colapsa para isso)
-  deft(output_delta_kernel(tfloat ~> tfloat ~> tfloat ~> integer ~> unit))
-
-  defk output_delta_kernel(yhat, y, delta, size) do
-    j = blockIdx.x * blockDim.x + threadIdx.x
-
-    if j < size do
-      delta[j] = yhat[j] - y[j]
-    end
-  end
-
-  deft(output_delta_scalar_kernel(tfloat ~> float ~> tfloat ~> integer ~> unit))
-
-  defk output_delta_scalar_kernel(yhat, y, delta, size) do
-    j = blockIdx.x * blockDim.x + threadIdx.x
-
-    if j < size do
-      delta[j] = yhat[j] - y
-    end
-  end
-
-  # delta_j^l = ReLU'(a_j) * SUM_k( w_jk * delta_k^{l+1} )
-  deft(hidden_delta_kernel(tfloat ~> tfloat ~> tfloat ~> tfloat ~> integer ~> integer ~> unit))
-
-  defk hidden_delta_kernel(weights_next, delta_next, act_curr, delta_curr, curr_size, next_size) do
-    j = blockIdx.x * blockDim.x + threadIdx.x
-
-    if j < curr_size do
-      sum = 0
-
-      for k in range(0, next_size, 1) do
-        sum = sum + weights_next[j * next_size + k] * delta_next[k]
-      end
-
-      a = act_curr[j]
-      zero = a - a
-
-      if a > zero do
-        delta_curr[j] = sum
-      else
-        delta_curr[j] = 0
-      end
-    end
-  end
-
-  # dL/dw_ij = delta_j * a_i  (camada-l e camada-(l-1))
-  deft(grad_weights_kernel(tfloat ~> tfloat ~> tfloat ~> integer ~> integer ~> unit))
-
-  defk grad_weights_kernel(delta, act_prev, grad_w, prev_size, curr_size) do
-    tid = blockIdx.x * blockDim.x + threadIdx.x
-
-    if tid < prev_size * curr_size do
-      i = tid / curr_size
-      j = tid - i * curr_size
-      grad_w[tid] = delta[j] * act_prev[i]
-    end
-  end
-
-  # w <- w - eta * dL/dw   (SGD vanilla)
-  deft(sgd_update_kernel(tfloat ~> tfloat ~> tfloat ~> tfloat ~> integer ~> unit))
-
-  defk sgd_update_kernel(params, grads, updated, lr_arr, size) do
-    tid = blockIdx.x * blockDim.x + threadIdx.x
-
-    if tid < size do
-      updated[tid] = params[tid] - lr_arr[0] * grads[tid]
-    end
-  end
-
-  deft(sgd_update_scalar_kernel(tfloat ~> tfloat ~> tfloat ~> float ~> integer ~> unit))
-
-  defk sgd_update_scalar_kernel(params, grads, updated, lr, size) do
-    tid = blockIdx.x * blockDim.x + threadIdx.x
-
-    if tid < size do
-      updated[tid] = params[tid] - lr * grads[tid]
-    end
-  end
-
   deft(zero_kernel(tfloat ~> integer ~> unit))
 
   defk zero_kernel(buffer, size) do
@@ -175,7 +62,6 @@ PolyHok.defmodule_st MLPClassifierDevice do
       ~> integer
       ~> integer
       ~> integer
-      ~> integer
       ~> unit
     )
   )
@@ -193,8 +79,7 @@ PolyHok.defmodule_st MLPClassifierDevice do
          neuron_offsets,
          layer_count,
          input_size,
-         train_count,
-         total_neurons
+         train_count
        ) do
     tid = blockIdx.x * blockDim.x + threadIdx.x
 
@@ -295,7 +180,6 @@ PolyHok.defmodule_st MLPClassifierDevice do
       ~> integer
       ~> integer
       ~> integer
-      ~> integer
       ~> unit
     )
   )
@@ -311,8 +195,7 @@ PolyHok.defmodule_st MLPClassifierDevice do
          neuron_offsets,
          layer_count,
          input_size,
-         batch_count,
-         total_neurons
+         batch_count
        ) do
     tid = blockIdx.x * blockDim.x + threadIdx.x
 

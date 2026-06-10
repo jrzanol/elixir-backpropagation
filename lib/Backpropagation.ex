@@ -34,20 +34,7 @@ defmodule Backpropagation do
     Enum.reduce(1..epochs, {model, profile}, fn epoch, {model, profile} ->
       epoch_start = System.monotonic_time()
 
-      {model, profile} =
-        Enum.reduce(train_batch_paths, {model, profile}, fn path, {model, profile} ->
-          {batch, profile} =
-            Profiler.measure(profile, :load_train_batch, fn ->
-              Model.load_train_batch(path)
-            end)
-
-          {model, profile} =
-            Profiler.measure(profile, :train_batch, fn ->
-              Model.train_batch(model, batch, n_features, learn_rate)
-            end)
-
-          {model, profile}
-        end)
+      {model, profile} = train_epoch(model, train_batch_paths, n_features, learn_rate, profile)
 
       profile =
         Profiler.add(
@@ -64,25 +51,53 @@ defmodule Backpropagation do
     end)
   end
 
+  defp train_epoch(model, train_batch_paths, n_features, learn_rate, profile) do
+    if function_exported?(Model, :train_epoch, 4) do
+      Profiler.measure(profile, :train_batch, fn ->
+        Model.train_epoch(model, train_batch_paths, n_features, learn_rate)
+      end)
+    else
+      Enum.reduce(train_batch_paths, {model, profile}, fn path, {model, profile} ->
+        {batch, profile} =
+          Profiler.measure(profile, :load_train_batch, fn ->
+            Model.load_train_batch(path)
+          end)
+
+        {model, profile} =
+          Profiler.measure(profile, :train_batch, fn ->
+            Model.train_batch(model, batch, n_features, learn_rate)
+          end)
+
+        {model, profile}
+      end)
+    end
+  end
+
   defp evaluate(model, batch_paths, n_features, profile) do
-    Enum.reduce(batch_paths, {Metrics.new(), profile}, fn path, {metrics, profile} ->
-      {batch, profile} =
-        Profiler.measure(profile, :load_predict_batch, fn ->
-          Model.load_predict_batch(path)
-        end)
+    if function_exported?(Model, :evaluate_paths, 3) do
+      Profiler.measure(profile, :predict_batch, fn ->
+        Model.evaluate_paths(model, batch_paths, n_features)
+      end)
+    else
+      Enum.reduce(batch_paths, {Metrics.new(), profile}, fn path, {metrics, profile} ->
+        {batch, profile} =
+          Profiler.measure(profile, :load_predict_batch, fn ->
+            Model.load_predict_batch(path)
+          end)
 
-      {predictions, profile} =
-        Profiler.measure(profile, :predict_batch, fn ->
-          Model.predict_batch(model, batch, n_features)
-        end)
+        {predictions, profile} =
+          Profiler.measure(profile, :predict_batch, fn ->
+            Model.predict_batch(model, batch, n_features)
+          end)
 
-      {metrics, profile} =
-        Profiler.measure(profile, :metrics_update, fn ->
-          Metrics.update(metrics, predictions, batch.labels)
-        end)
+        {metrics, profile} =
+          Profiler.measure(profile, :metrics_update, fn ->
+            Metrics.update(metrics, predictions, batch.labels)
+          end)
 
-      {metrics, profile}
-    end)
+        {metrics, profile}
+      end)
+    end
   end
 
   defp initial_model(layers, seed) do

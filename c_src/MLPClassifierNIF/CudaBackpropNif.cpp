@@ -193,7 +193,45 @@ static ERL_NIF_TERM train_batch_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM
     if ((int)trainY.size() != batchCount)
         return badarg(env, "train_y tem tamanho invalido");
 
-    resource->model->TrainBatch(trainX.data(), trainY.data(), batchCount, (float)learnRate);
+    if (!resource->model->TrainBatch(trainX.data(), trainY.data(), batchCount, (float)learnRate))
+        return badarg(env, "falha ao executar treino CUDA no NIF");
+
+    return enif_make_atom(env, "ok");
+}
+
+static ERL_NIF_TERM train_batch_binary_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    if (argc != 6)
+        return enif_make_badarg(env);
+
+    ModelResource* resource = NULL;
+    ErlNifBinary trainX;
+    ErlNifBinary trainY;
+    int batchCount = 0;
+    int inputSize = 0;
+    double learnRate = 0.0;
+
+    if (!get_model(env, argv[0], &resource))
+        return badarg(env, "modelo CUDA invalido");
+    if (!enif_inspect_binary(env, argv[1], &trainX))
+        return badarg(env, "train_x_bin deve ser binary");
+    if (!enif_inspect_binary(env, argv[2], &trainY))
+        return badarg(env, "train_y_bin deve ser binary");
+    if (!get_int(env, argv[3], &batchCount) ||
+        !get_int(env, argv[4], &inputSize) ||
+        !get_double(env, argv[5], &learnRate))
+        return enif_make_badarg(env);
+
+    const size_t expectedX = (size_t)batchCount * (size_t)inputSize * sizeof(float);
+    const size_t expectedY = (size_t)batchCount * sizeof(float);
+
+    if (trainX.size != expectedX)
+        return badarg(env, "train_x_bin tem tamanho invalido");
+    if (trainY.size != expectedY)
+        return badarg(env, "train_y_bin tem tamanho invalido");
+
+    if (!resource->model->TrainBatch((float*)trainX.data, (float*)trainY.data, batchCount, (float)learnRate))
+        return badarg(env, "falha ao executar treino CUDA no NIF");
 
     return enif_make_atom(env, "ok");
 }
@@ -227,10 +265,43 @@ static ERL_NIF_TERM predict_batch_nif(ErlNifEnv* env, int argc, const ERL_NIF_TE
     return predList;
 }
 
+static ERL_NIF_TERM predict_batch_binary_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    if (argc != 4)
+        return enif_make_badarg(env);
+
+    ModelResource* resource = NULL;
+    ErlNifBinary features;
+    int batchCount = 0;
+    int inputSize = 0;
+
+    if (!get_model(env, argv[0], &resource))
+        return badarg(env, "modelo CUDA invalido");
+    if (!enif_inspect_binary(env, argv[1], &features))
+        return badarg(env, "x_bin deve ser binary");
+    if (!get_int(env, argv[2], &batchCount) ||
+        !get_int(env, argv[3], &inputSize))
+        return enif_make_badarg(env);
+
+    const size_t expected = (size_t)batchCount * (size_t)inputSize * sizeof(float);
+    if (features.size != expected)
+        return badarg(env, "x_bin tem tamanho invalido");
+
+    float* pred = resource->model->Predict((float*)features.data, batchCount);
+    if (pred == NULL)
+        return badarg(env, "falha ao executar inferencia CUDA no NIF");
+
+    ERL_NIF_TERM predList = make_float_list(env, pred, batchCount);
+    delete[] pred;
+    return predList;
+}
+
 static ErlNifFunc nif_funcs[] = {
     {"new_model", 3, new_model_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND},
     {"train_batch", 6, train_batch_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND},
-    {"predict_batch", 4, predict_batch_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND}
+    {"train_batch_binary", 6, train_batch_binary_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND},
+    {"predict_batch", 4, predict_batch_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND},
+    {"predict_batch_binary", 4, predict_batch_binary_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND}
 };
 
 ERL_NIF_INIT(Elixir.CudaNif, nif_funcs, load_nif, NULL, NULL, NULL)

@@ -25,27 +25,43 @@ run_sudo() {
 if command -v apt-get >/dev/null 2>&1; then
   echo "[INFO] Instalando pacotes base via apt..."
   run_sudo apt-get update
-  run_sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    autoconf \
-    build-essential \
-    ca-certificates \
-    curl \
-    git \
-    libncurses-dev \
-    libssl-dev \
-    libwxgtk3.2-dev \
-    libgl1-mesa-dev \
-    libglu1-mesa-dev \
-    libpng-dev \
-    libssh-dev \
-    libxml2-utils \
-    m4 \
-    make \
-    openjdk-17-jdk \
-    python3 \
-    python3-pip \
-    unzip \
+
+  WX_PACKAGE=""
+  if apt-cache show libwxgtk3.2-dev >/dev/null 2>&1; then
+    WX_PACKAGE="libwxgtk3.2-dev"
+  elif apt-cache show libwxgtk3.0-gtk3-dev >/dev/null 2>&1; then
+    WX_PACKAGE="libwxgtk3.0-gtk3-dev"
+  else
+    echo "[WARN] Nenhum pacote wxWidgets dev encontrado. Erlang sera compilado sem suporte wx se necessario."
+  fi
+
+  APT_PACKAGES=(
+    autoconf
+    build-essential
+    ca-certificates
+    curl
+    git
+    libncurses-dev
+    libssl-dev
+    libgl1-mesa-dev
+    libglu1-mesa-dev
+    libpng-dev
+    libssh-dev
+    libxml2-utils
+    m4
+    make
+    openjdk-17-jdk
+    python3
+    python3-pip
+    unzip
     xsltproc
+  )
+
+  if [ -n "$WX_PACKAGE" ]; then
+    APT_PACKAGES+=("$WX_PACKAGE")
+  fi
+
+  run_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "${APT_PACKAGES[@]}"
 else
   echo "[WARN] apt-get nao encontrado. Pulando instalacao de pacotes do sistema."
 fi

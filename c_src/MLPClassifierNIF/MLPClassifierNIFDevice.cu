@@ -25,7 +25,7 @@ __global__ void KernelUpdateWeights(float* weights, float* biases,
         biases[tid] -= scl * gradB[tid];
 }
 
-__device__ void FitDevice(MLPLayer* layer,
+__global__ void KernelFit(MLPLayer* layer,
                           const float* batchX,
                           const float* batchY,
                           int batchCount,
@@ -40,7 +40,7 @@ __device__ void FitDevice(MLPLayer* layer,
 
     const int inputSize = layer->m_Layers[0];
     for (int i = 0; i < inputSize; ++i)
-        act[(layer->m_NeuronOffset[0] + i) * batchCount + tid] = batchX[i * batchCount + tid];
+        act[(layer->m_NeuronOffset[0] + i) * batchCount + tid] = batchX[tid * inputSize + i];
 
     for (int l = 1; l < layer->m_LayerCount; ++l)
     {
@@ -109,7 +109,7 @@ __device__ void FitDevice(MLPLayer* layer,
     }
 }
 
-__device__ void PredictDevice(MLPLayer* layer,
+__global__ void KernelPredict(MLPLayer* layer,
                               const float* batchX,
                               float* results,
                               int batchCount,
@@ -121,7 +121,7 @@ __device__ void PredictDevice(MLPLayer* layer,
 
     const int inputSize = layer->m_Layers[0];
     for (int i = 0; i < inputSize; ++i)
-        act[(layer->m_NeuronOffset[0] + i) * batchCount + tid] = batchX[i * batchCount + tid];
+        act[(layer->m_NeuronOffset[0] + i) * batchCount + tid] = batchX[tid * inputSize + i];
 
     for (int l = 1; l < layer->m_LayerCount; ++l)
     {
@@ -144,29 +144,8 @@ __device__ void PredictDevice(MLPLayer* layer,
     const int outL    = layer->m_LayerCount - 1;
     const int outSize = layer->m_Layers[outL];
     for (int j = 0; j < outSize; ++j)
-        results[j * batchCount + tid] =
+        results[tid * outSize + j] =
             act[(layer->m_NeuronOffset[outL] + j) * batchCount + tid];
-}
-
-__global__ void KernelFit(MLPLayer* layer,
-                          const float* batchX,
-                          const float* batchY,
-                          int batchCount,
-                          float* act,
-                          float* delta,
-                          float* gradW,
-                          float* gradB)
-{
-    FitDevice(layer, batchX, batchY, batchCount, act, delta, gradW, gradB);
-}
-
-__global__ void KernelPredict(MLPLayer* layer,
-                              const float* batchX,
-                              float* results,
-                              int batchCount,
-                              float* act)
-{
-    PredictDevice(layer, batchX, results, batchCount, act);
 }
 
 void LaunchFitKernel(MLPLayer* layer,

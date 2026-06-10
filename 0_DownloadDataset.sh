@@ -7,13 +7,12 @@ echo "[INFO] Iniciando download do dataset..."
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATASET_DIR="$PROJECT_ROOT/scripts/datasets"
 DATASET_URL="${1:-}"
-DATASET_NAME="${2:-heart.csv}"
-DATASET_FILE="$DATASET_DIR/$DATASET_NAME"
-EXPECTED_HEADER="Age,Sex,ChestPainType,RestingBP,Cholesterol,FastingBS,RestingECG,MaxHR,ExerciseAngina,Oldpeak,ST_Slope,HeartDisease"
+OUTPUT_NAME="${2:-}"
 
 if [ -z "$DATASET_URL" ]; then
   echo "Uso: ./0_DownloadDataset.sh KAGGLE_URL_OU_SLUG [nome_do_arquivo]" >&2
   echo "Exemplo: ./0_DownloadDataset.sh https://www.kaggle.com/datasets/fedesoriano/heart-failure-prediction" >&2
+  echo "Exemplo: ./0_DownloadDataset.sh 'https://www.kaggle.com/datasets/sobhanmoosavi/us-accidents/data?select=US_Accidents_March23.csv'" >&2
   echo "Exemplo: ./0_DownloadDataset.sh fedesoriano/heart-failure-prediction heart.csv" >&2
   exit 2
 fi
@@ -21,7 +20,9 @@ fi
 cd "$PROJECT_ROOT"
 echo "[INFO] Projeto: $PROJECT_ROOT"
 echo "[INFO] URL: $DATASET_URL"
-echo "[INFO] Saida: $DATASET_FILE"
+if [ -n "$OUTPUT_NAME" ]; then
+  echo "[INFO] Nome de saida solicitado: $OUTPUT_NAME"
+fi
 
 mkdir -p "$DATASET_DIR"
 
@@ -44,22 +45,26 @@ if ! python3 -c "import opendatasets" >/dev/null 2>&1; then
   exit 1
 fi
 
-export DATASET_URL DATASET_DIR DATASET_FILE EXPECTED_HEADER
+export DATASET_URL DATASET_DIR OUTPUT_NAME
 
 python3 <<'PY'
 import json
 import os
 import shutil
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
 
 import opendatasets as od
 import opendatasets.utils.kaggle_api as kaggle_api
 
 dataset_url = os.environ["DATASET_URL"]
 dataset_dir = Path(os.environ["DATASET_DIR"])
-dataset_file = Path(os.environ["DATASET_FILE"])
-expected_header = os.environ["EXPECTED_HEADER"]
+output_name = os.environ.get("OUTPUT_NAME", "").strip()
 kaggle_config_dir = os.environ.get("KAGGLE_CONFIG_DIR")
+
+parsed = urlparse(dataset_url)
+selected_name = parse_qs(parsed.query).get("select", [""])[0]
+selected_name = Path(unquote(selected_name)).name if selected_name else ""
 
 if kaggle_config_dir:
     kaggle_json = Path(kaggle_config_dir) / "kaggle.json"
@@ -86,30 +91,45 @@ if not after:
 else:
     candidates = after
 
-source = None
-for candidate in candidates:
-    with candidate.open("r", encoding="utf-8-sig", newline="") as handle:
-        header = handle.readline().strip().replace("\r", "")
+if selected_name:
+    selected_candidates = [path for path in candidates if path.name == selected_name]
+    if not selected_candidates:
+        available = ", ".join(path.name for path in candidates[:20])
+        raise SystemExit(f"ERRO: CSV selecionado pela URL nao encontrado: {selected_name}. CSVs encontrados: {available}")
+    source = selected_candidates[0]
+elif len(candidates) == 1:
+    source = candidates[0]
+else:
+    source = max(candidates, key=lambda path: path.stat().st_size)
 
-    if header == expected_header:
-        source = candidate
-        break
-
-if source is None:
-    raise SystemExit("ERRO: nenhum CSV baixado possui o header esperado.")
+dataset_file = dataset_dir / (output_name or source.name)
 
 if source.resolve() != dataset_file.resolve():
     shutil.copyfile(source, dataset_file)
 
 print(f"[INFO] CSV fonte: {source}")
+print(f"[INFO] Saida: {dataset_file}")
 PY
 
-header="$(head -n 1 "$DATASET_FILE" | tr -d '\r')"
-if [ "$header" != "$EXPECTED_HEADER" ]; then
-  echo "ERRO: o arquivo baixado nao parece ser o heart.csv esperado." >&2
-  echo "Header recebido: $header" >&2
-  exit 1
-fi
+DATASET_FILE="$(python3 - <<'PY'
+import os
+from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
+
+dataset_dir = Path(os.environ["DATASET_DIR"])
+output_name = os.environ.get("OUTPUT_NAME", "").strip()
+selected_name = parse_qs(urlparse(os.environ["DATASET_URL"]).query).get("select", [""])[0]
+selected_name = Path(unquote(selected_name)).name if selected_name else ""
+
+if output_name:
+    print(dataset_dir / output_name)
+elif selected_name:
+    print(dataset_dir / selected_name)
+else:
+    newest = max(dataset_dir.rglob("*.csv"), key=lambda path: path.stat().st_mtime)
+    print(dataset_dir / newest.name)
+PY
+)"
 
 echo "[OK] Dataset baixado em $DATASET_FILE"
 echo "[INFO] Linhas: $(wc -l < "$DATASET_FILE")"
