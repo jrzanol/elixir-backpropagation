@@ -142,6 +142,8 @@ defmodule MLPClassifierHost do
   end
 
   defp train_gpu_batch(state, gpu_train_x, gpu_train_y, batch_count, learning_rate) do
+    debug_snapshot(0, state, false)
+
     # Zera gradientes dos pesos:
     PolyHok.spawn_st(
       &MLPClassifierDevice.zero_kernel/2,
@@ -196,7 +198,48 @@ defmodule MLPClassifierHost do
       [state.gpu_biases, state.gpu_grad_b, learning_rate, batch_count, state.total_biases]
     )
 
+    debug_snapshot(1, state, true)
+
     state
+  end
+
+  defp debug_snapshot(epoch, state, include_gradients) do
+    if System.get_env("BACKPROP_DEBUG") == "1" and
+         not Process.get(:backprop_debug_snapshot_printed, false) do
+      count =
+        case Integer.parse(System.get_env("BACKPROP_DEBUG_VALUES", "8")) do
+          {value, ""} when value > 0 -> value
+          _ -> 8
+        end
+
+      weights = gpu_values(state.gpu_weights, count)
+      biases = gpu_values(state.gpu_biases, count)
+      grad_w = if include_gradients, do: gpu_values(state.gpu_grad_w, count), else: []
+      grad_b = if include_gradients, do: gpu_values(state.gpu_grad_b, count), else: []
+
+      IO.puts(
+        "[DEBUG_SNAPSHOT] impl=polyhok epoch=#{epoch}" <>
+          " weights=#{format_values(weights)}" <>
+          " biases=#{format_values(biases)}" <>
+          " grad_w=#{format_values(grad_w)}" <>
+          " grad_b=#{format_values(grad_b)}"
+      )
+
+      if epoch == 1 do
+        Process.put(:backprop_debug_snapshot_printed, true)
+      end
+    end
+  end
+
+  defp gpu_values(gpu_buffer, count) do
+    gpu_buffer
+    |> PolyHok.get_gnx()
+    |> Nx.to_flat_list()
+    |> Enum.take(count)
+  end
+
+  defp format_values(values) do
+    "[" <> Enum.map_join(values, ",", &:io_lib.format("~.9f", [&1])) <> "]"
   end
 
   defp float_tensor(binary, size) do

@@ -36,6 +36,7 @@ private:
     bool EnsureBatchCapacity(int batchCount);
 
     bool m_Initialized;
+    bool m_DebugSnapshotPrinted;
     int  m_BatchCapacity;
 
     MLPLayer  m_MLPLayer;

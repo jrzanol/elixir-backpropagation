@@ -89,6 +89,7 @@ MLPClassifierNIF::MLPClassifierNIF(const std::vector<int>& layers,
                                    const std::vector<float>& flatWeights,
                                    const std::vector<float>& flatBiases)
     : m_Initialized(false),
+      m_DebugSnapshotPrinted(false),
       m_BatchCapacity(0),
       m_cuMLPLayer(NULL),
       m_cuGradW(NULL),
@@ -268,7 +269,7 @@ bool MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
     const int totalBiases  = m_MLPLayer.m_TotalBiases;
 
     const char* dbgEnv = std::getenv("BACKPROP_DEBUG");
-    const bool  debug  = (dbgEnv != NULL && dbgEnv[0] == '1');
+    const bool  debug  = (dbgEnv != NULL && dbgEnv[0] == '1' && !m_DebugSnapshotPrinted);
     const int debugCount = DebugValueCount();
     float dbgBuf[4];
 
@@ -314,6 +315,7 @@ bool MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
                 std::printf(" %.6f", dbgBuf[k]);
             std::printf("\n");
         }
+        m_DebugSnapshotPrinted = true;
     }
 
     return true;

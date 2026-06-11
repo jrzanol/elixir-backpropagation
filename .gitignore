@@ -1,6 +1,7 @@
 /.kaggle
 /_build
 /_build_verify
+/.venv-pytorch
 /cover
 /deps
 /doc
@@ -19,3 +20,5 @@ erl_crash.dump
 /c_src/Elixir.MLPClassifierDevice.cu
 /c_src/Elixir.MLPClassifierDevice.types
 /scripts/prepared_dataset
+/scripts/__pycache__
+/reports
