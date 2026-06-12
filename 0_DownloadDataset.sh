@@ -49,6 +49,7 @@ export DATASET_URL DATASET_DIR OUTPUT_NAME
 
 python3 <<'PY'
 import json
+import gzip
 import os
 import shutil
 from pathlib import Path
@@ -78,21 +79,32 @@ if kaggle_config_dir:
         if os.environ["KAGGLE_USERNAME"] and os.environ["KAGGLE_KEY"]:
             kaggle_api.read_kaggle_creds = lambda: True
 
-before = {path.resolve() for path in dataset_dir.rglob("*.csv")}
+def csv_files() -> list[Path]:
+    return list(dataset_dir.rglob("*.csv")) + list(dataset_dir.rglob("*.csv.gz"))
+
+
+before = {path.resolve() for path in csv_files()}
 od.download(dataset_url, data_dir=str(dataset_dir))
 after = sorted(
-    (path for path in dataset_dir.rglob("*.csv") if path.resolve() not in before),
+    (path for path in csv_files() if path.resolve() not in before),
     key=lambda path: path.stat().st_mtime,
     reverse=True,
 )
 
 if not after:
-    candidates = sorted(dataset_dir.rglob("*.csv"), key=lambda path: path.stat().st_mtime, reverse=True)
+    candidates = sorted(csv_files(), key=lambda path: path.stat().st_mtime, reverse=True)
 else:
     candidates = after
 
+if not candidates:
+    raise SystemExit("ERRO: nenhum arquivo .csv ou .csv.gz foi encontrado no dataset baixado.")
+
 if selected_name:
-    selected_candidates = [path for path in candidates if path.name == selected_name]
+    selected_candidates = [
+        path
+        for path in candidates
+        if path.name == selected_name or path.name.removesuffix(".gz") == selected_name
+    ]
     if not selected_candidates:
         available = ", ".join(path.name for path in candidates[:20])
         raise SystemExit(f"ERRO: CSV selecionado pela URL nao encontrado: {selected_name}. CSVs encontrados: {available}")
@@ -102,34 +114,29 @@ elif len(candidates) == 1:
 else:
     source = max(candidates, key=lambda path: path.stat().st_size)
 
-dataset_file = dataset_dir / (output_name or source.name)
+default_name = source.name.removesuffix(".gz")
+final_name = (output_name or default_name).removesuffix(".gz")
+dataset_file = dataset_dir / final_name
 
-if source.resolve() != dataset_file.resolve():
+if source.name.endswith(".gz"):
+    print(f"[INFO] Extraindo gzip: {source}")
+    with gzip.open(source, "rb") as compressed, dataset_file.open("wb") as extracted:
+        shutil.copyfileobj(compressed, extracted, length=16 * 1024 * 1024)
+elif source.resolve() != dataset_file.resolve():
     shutil.copyfile(source, dataset_file)
 
 print(f"[INFO] CSV fonte: {source}")
 print(f"[INFO] Saida: {dataset_file}")
+Path(dataset_dir / ".last_downloaded_dataset").write_text(str(dataset_file), encoding="utf-8")
 PY
 
-DATASET_FILE="$(python3 - <<'PY'
-import os
-from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
-
-dataset_dir = Path(os.environ["DATASET_DIR"])
-output_name = os.environ.get("OUTPUT_NAME", "").strip()
-selected_name = parse_qs(urlparse(os.environ["DATASET_URL"]).query).get("select", [""])[0]
-selected_name = Path(unquote(selected_name)).name if selected_name else ""
-
-if output_name:
-    print(dataset_dir / output_name)
-elif selected_name:
-    print(dataset_dir / selected_name)
-else:
-    newest = max(dataset_dir.rglob("*.csv"), key=lambda path: path.stat().st_mtime)
-    print(dataset_dir / newest.name)
-PY
-)"
+DATASET_MARKER="$DATASET_DIR/.last_downloaded_dataset"
+if [ ! -s "$DATASET_MARKER" ]; then
+  echo "ERRO: caminho final do dataset nao foi registrado." >&2
+  exit 1
+fi
+DATASET_FILE="$(cat "$DATASET_MARKER")"
+rm -f "$DATASET_MARKER"
 
 echo "[OK] Dataset baixado em $DATASET_FILE"
 echo "[INFO] Linhas: $(wc -l < "$DATASET_FILE")"

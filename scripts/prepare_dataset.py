@@ -77,6 +77,14 @@ def parse_label(value: str, positive_threshold: float) -> float:
 
 
 def detect_target(header: list[str], target_column: str | None) -> int:
+    if target_column and target_column.isdigit():
+        target_index = int(target_column)
+        if target_index >= len(header):
+            raise ValueError(
+                f"indice da coluna alvo fora do intervalo: {target_index}. "
+                f"Total de colunas: {len(header)}"
+            )
+        return target_index
     if target_column and target_column in header:
         return header.index(target_column)
     if "fraud_bool" in header:
@@ -84,12 +92,14 @@ def detect_target(header: list[str], target_column: str | None) -> int:
     return len(header) - 1
 
 
-def read_header(csv_path: Path) -> list[str]:
+def read_header(csv_path: Path, has_header: bool) -> list[str]:
     with csv_path.open("r", newline="", encoding="utf-8-sig") as handle:
         reader = csv.reader(handle)
         for row in reader:
             if row:
-                return [col.strip() for col in row]
+                if has_header:
+                    return [col.strip() for col in row]
+                return [f"column_{index}" for index in range(len(row))]
     raise ValueError(f"CSV vazio: {csv_path}")
 
 
@@ -99,6 +109,7 @@ def scan_csv(
     target_index: int,
     train_ratio: float,
     seed: int,
+    has_header: bool,
 ) -> dict:
     label_maps: dict[int, dict[str, int]] = {}
     mins = [float("inf")] * len(feature_indices)
@@ -108,7 +119,8 @@ def scan_csv(
 
     with csv_path.open("r", newline="", encoding="utf-8-sig") as handle:
         reader = csv.reader(handle)
-        next(reader, None)
+        if has_header:
+            next(reader, None)
 
         for row_index, row in enumerate(reader):
             if not row:
@@ -199,6 +211,7 @@ def materialize(
     seed: int,
     batch_size: int,
     positive_threshold: float,
+    has_header: bool,
 ) -> tuple[int, int, int, int, int, int]:
     train_dir = output_dir / "train"
     test_dir = output_dir / "test"
@@ -218,7 +231,8 @@ def materialize(
 
     with csv_path.open("r", newline="", encoding="utf-8-sig") as handle:
         reader = csv.reader(handle)
-        next(reader, None)
+        if has_header:
+            next(reader, None)
 
         for row_index, row in enumerate(reader):
             if not row:
@@ -283,6 +297,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8192)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--positive-threshold", type=float, default=0.5)
+    parser.add_argument("--no-header", action="store_true", help="Trata a primeira linha como dados e gera nomes column_N.")
     parser.add_argument("--force", action="store_true", help="Remove o diretorio de saida antes de gerar.")
     return parser.parse_args()
 
@@ -303,13 +318,14 @@ def main() -> None:
     output_dir.mkdir(parents=True)
 
     started = time.perf_counter()
-    header = read_header(csv_path)
+    has_header = not args.no_header
+    header = read_header(csv_path, has_header)
     target_index = detect_target(header, args.target_column)
     feature_indices = [idx for idx in range(len(header)) if idx != target_index]
 
     print("Primeira passada: detectando categorias, split e min/max...")
     scan_started = time.perf_counter()
-    scan = scan_csv(csv_path, feature_indices, target_index, args.train_ratio, args.seed)
+    scan = scan_csv(csv_path, feature_indices, target_index, args.train_ratio, args.seed, has_header)
     print(f"scan_seconds={time.perf_counter() - scan_started:.3f}")
 
     print("Segunda passada: normalizando e gravando batches binarios...")
@@ -324,6 +340,7 @@ def main() -> None:
         args.seed,
         args.batch_size,
         args.positive_threshold,
+        has_header,
     )
     print(f"materialize_seconds={time.perf_counter() - materialize_started:.3f}")
 
@@ -333,6 +350,7 @@ def main() -> None:
             "format": "BPNORM1",
             "source": csv_path.name,
             "target_column": header[target_index],
+            "has_header": str(has_header).lower(),
             "n_features": len(feature_indices),
             "train_count": scan["train_count"],
             "test_count": scan["test_count"],

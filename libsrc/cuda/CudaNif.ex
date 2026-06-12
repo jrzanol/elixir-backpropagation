@@ -60,4 +60,8 @@ defmodule CudaNif do
       ) do
     :erlang.nif_error(:nif_not_loaded)
   end
+
+  def last_timings(_model) do
+    :erlang.nif_error(:nif_not_loaded)
+  end
 end

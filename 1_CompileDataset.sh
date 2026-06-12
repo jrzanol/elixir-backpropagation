@@ -8,16 +8,18 @@ DATASET_NAME="${1:-heart.csv}"
 TARGET_SELECTOR="${2:-HeartDisease}"
 BATCH_SIZE="${3:-1024}"
 POSITIVE_THRESHOLD="${4:-0.5}"
+HEADER_MODE="${5:-header}"
 DATASET_CSV="$PROJECT_ROOT/scripts/datasets/$DATASET_NAME"
 OUTPUT_DIR="$PROJECT_ROOT/scripts/prepared_dataset"
 TRAIN_RATIO="0.8"
 SEED="42"
 
 if [ "$DATASET_NAME" = "-h" ] || [ "$DATASET_NAME" = "--help" ]; then
-  echo "Uso: ./1_CompileDataset.sh [arquivo_csv] [coluna_alvo] [batch_size] [positive_threshold]"
+  echo "Uso: ./1_CompileDataset.sh [arquivo_csv] [coluna_alvo] [batch_size] [positive_threshold] [header|no_header]"
   echo "Exemplo: ./1_CompileDataset.sh heart.csv HeartDisease"
   echo "Exemplo: ./1_CompileDataset.sh heart.csv 11 32768 0.5"
   echo "Exemplo Severity 3/4: ./1_CompileDataset.sh US_Accidents_March23.csv Severity 32768 2.5"
+  echo "Exemplo HIGGS: ./1_CompileDataset.sh HIGGS.csv 0 32768 0.5 no_header"
   exit 0
 fi
 
@@ -27,7 +29,7 @@ cd "$PROJECT_ROOT"
 echo "[INFO] Projeto: $PROJECT_ROOT"
 echo "[INFO] CSV: $DATASET_CSV"
 echo "[INFO] Saida: $OUTPUT_DIR"
-echo "[INFO] target_selector=$TARGET_SELECTOR train_ratio=$TRAIN_RATIO batch_size=$BATCH_SIZE positive_threshold=$POSITIVE_THRESHOLD seed=$SEED"
+echo "[INFO] target_selector=$TARGET_SELECTOR train_ratio=$TRAIN_RATIO batch_size=$BATCH_SIZE positive_threshold=$POSITIVE_THRESHOLD header_mode=$HEADER_MODE seed=$SEED"
 
 if [ ! -f "$DATASET_CSV" ]; then
   echo "ERRO: dataset cru nao encontrado: $DATASET_CSV" >&2
@@ -56,7 +58,12 @@ fi
 
 TARGET_COLUMN="$TARGET_SELECTOR"
 
-if [[ "$TARGET_SELECTOR" =~ ^[0-9]+$ ]]; then
+if [ "$HEADER_MODE" != "header" ] && [ "$HEADER_MODE" != "no_header" ]; then
+  echo "ERRO: modo de cabecalho invalido: $HEADER_MODE. Use header ou no_header." >&2
+  exit 1
+fi
+
+if [[ "$TARGET_SELECTOR" =~ ^[0-9]+$ ]] && [ "$HEADER_MODE" = "header" ]; then
   TARGET_COLUMN="$(
     python3 - "$DATASET_CSV" "$TARGET_SELECTOR" <<'PY'
 import csv
@@ -79,6 +86,11 @@ fi
 
 echo "[INFO] target_column=$TARGET_COLUMN"
 
+HEADER_ARGS=()
+if [ "$HEADER_MODE" = "no_header" ]; then
+  HEADER_ARGS+=(--no-header)
+fi
+
 python3 "$PROJECT_ROOT/scripts/prepare_dataset.py" \
   "$DATASET_CSV" \
   "$OUTPUT_DIR" \
@@ -87,6 +99,7 @@ python3 "$PROJECT_ROOT/scripts/prepare_dataset.py" \
   --batch-size "$BATCH_SIZE" \
   --seed "$SEED" \
   --positive-threshold "$POSITIVE_THRESHOLD" \
+  "${HEADER_ARGS[@]}" \
   --force
 
 echo "[OK] Dataset preparado em $OUTPUT_DIR"

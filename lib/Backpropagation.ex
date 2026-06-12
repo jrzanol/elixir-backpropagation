@@ -1,4 +1,13 @@
 defmodule Backpropagation do
+  def topology(n_features) when n_features > 0 and n_features + 385 <= 512 do
+    [n_features, 256, 128, 1]
+  end
+
+  def topology(n_features) do
+    raise ArgumentError,
+          "topologia [#{n_features}, 256, 128, 1] excede o limite de 512 neuronios do PolyHok"
+  end
+
   def run(
         %{
           seed: seed,
@@ -22,6 +31,7 @@ defmodule Backpropagation do
     {model, profile} = train(model, train_batch_paths, epochs, learn_rate, n_features, profile)
     {train_metrics, profile} = evaluate(model, train_batch_paths, n_features, profile)
     {test_metrics, profile} = evaluate(model, test_batch_paths, n_features, profile)
+    profile = Profiler.merge_recorded(profile)
 
     %{
       train_metrics: train_metrics,
@@ -53,9 +63,7 @@ defmodule Backpropagation do
 
   defp train_epoch(model, train_batch_paths, n_features, learn_rate, profile) do
     if function_exported?(Model, :train_epoch, 4) do
-      Profiler.measure(profile, :train_batch, fn ->
-        Model.train_epoch(model, train_batch_paths, n_features, learn_rate)
-      end)
+      {Model.train_epoch(model, train_batch_paths, n_features, learn_rate), profile}
     else
       Enum.reduce(train_batch_paths, {model, profile}, fn path, {model, profile} ->
         {batch, profile} =
@@ -75,9 +83,7 @@ defmodule Backpropagation do
 
   defp evaluate(model, batch_paths, n_features, profile) do
     if function_exported?(Model, :evaluate_paths, 3) do
-      Profiler.measure(profile, :predict_batch, fn ->
-        Model.evaluate_paths(model, batch_paths, n_features)
-      end)
+      {Model.evaluate_paths(model, batch_paths, n_features), profile}
     else
       Enum.reduce(batch_paths, {Metrics.new(), profile}, fn path, {metrics, profile} ->
         {batch, profile} =
@@ -100,7 +106,7 @@ defmodule Backpropagation do
     end
   end
 
-  defp initial_model(layers, seed) do
+  def initial_model(layers, seed) do
     layer_pairs =
       Enum.zip(
         Enum.slice(layers, 0..-2//1),

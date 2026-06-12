@@ -72,14 +72,22 @@ export ERL_INCLUDE_DIR
 export CPATH="$ERL_INCLUDE_DIR:${CPATH:-}"
 echo "[INFO] ERL_INCLUDE_DIR=$ERL_INCLUDE_DIR"
 
-echo "[INFO] Baixando fork do PolyHok..."
-if [ -e "$POLYHOK_DIR" ]; then
-  case "$POLYHOK_DIR" in
-    "$PROJECT_ROOT"/deps/poly_hok) rm -rf -- "$POLYHOK_DIR" ;;
-    *) echo "ERRO: caminho PolyHok inesperado: $POLYHOK_DIR" >&2; exit 1 ;;
-  esac
+if [ "${BACKPROP_SKIP_POLYHOK_DOWNLOAD:-0}" = "1" ]; then
+  if [ ! -d "$POLYHOK_DIR" ]; then
+    echo "ERRO: BACKPROP_SKIP_POLYHOK_DOWNLOAD=1, mas $POLYHOK_DIR nao existe." >&2
+    exit 1
+  fi
+  echo "[INFO] Reutilizando fork do PolyHok existente."
+else
+  echo "[INFO] Baixando fork do PolyHok..."
+  if [ -e "$POLYHOK_DIR" ]; then
+    case "$POLYHOK_DIR" in
+      "$PROJECT_ROOT"/deps/poly_hok) rm -rf -- "$POLYHOK_DIR" ;;
+      *) echo "ERRO: caminho PolyHok inesperado: $POLYHOK_DIR" >&2; exit 1 ;;
+    esac
+  fi
+  git clone "$POLYHOK_REPOSITORY" "$POLYHOK_DIR"
 fi
-git clone "$POLYHOK_REPOSITORY" "$POLYHOK_DIR"
 
 echo "[INFO] Corrigindo compatibilidade da AST com Elixir atual..."
 sed -i 's/{:__block__, \[\], definitions}/{:__block__, _, definitions}/g' \

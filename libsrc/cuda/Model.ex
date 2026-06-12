@@ -10,59 +10,92 @@ defmodule Model do
     features = Dataset.flatten_features(batch)
     labels = Dataset.flatten_labels(batch)
 
-    :ok = CudaNif.train_batch(model.ref, features, labels, batch.count, n_features, learn_rate)
+    Profiler.runtime(:train_batch, fn ->
+      :ok = CudaNif.train_batch(model.ref, features, labels, batch.count, n_features, learn_rate)
+      record_cuda_timings(model.ref, :train)
+    end)
+
     model
   end
 
   def predict_batch(model, batch, n_features) do
-    features = Dataset.flatten_features(batch)
-
-    model.ref
-    |> CudaNif.predict_batch(features, batch.count, n_features)
+    predict_probabilities(model, batch, n_features)
     |> Enum.map(&prob_to_class/1)
   end
 
+  def predict_probabilities(model, batch, n_features) do
+    features = Dataset.flatten_features(batch)
+
+    Profiler.runtime(:predict_batch, fn ->
+      probabilities = CudaNif.predict_batch(model.ref, features, batch.count, n_features)
+      record_cuda_timings(model.ref, :predict)
+      probabilities
+    end)
+  end
+
   def train_epoch(model, batch_paths, n_features, learn_rate) do
-    reduce_prefetched_batches(batch_paths, model, fn batch, model ->
-      :ok =
-        CudaNif.train_batch_binary(
-          model.ref,
-          batch.features_bin,
-          batch.labels_bin,
-          batch.count,
-          n_features,
-          learn_rate
-        )
+    reduce_prefetched_batches(batch_paths, model, :load_train_batch, fn batch, model ->
+      Profiler.runtime(:train_batch, fn ->
+        :ok =
+          CudaNif.train_batch_binary(
+            model.ref,
+            batch.features_bin,
+            batch.labels_bin,
+            batch.count,
+            n_features,
+            learn_rate
+          )
+
+        record_cuda_timings(model.ref, :train)
+      end)
 
       model
     end)
   end
 
   def evaluate_paths(model, batch_paths, n_features) do
-    reduce_prefetched_batches(batch_paths, Metrics.new(), fn batch, metrics ->
-      predictions =
-        model.ref
-        |> CudaNif.predict_batch_binary(batch.features_bin, batch.count, n_features)
-        |> Enum.map(&prob_to_class/1)
-
+    reduce_prefetched_batches(batch_paths, Metrics.new(), :load_predict_batch, fn batch,
+                                                                                  metrics ->
+      probabilities = predict_binary_probabilities(model, batch, n_features)
+      predictions = Enum.map(probabilities, &prob_to_class/1)
       Metrics.update(metrics, predictions, batch.labels)
     end)
   end
 
-  defp reduce_prefetched_batches([], accumulator, _fun), do: accumulator
+  def predict_binary_probabilities(model, batch, n_features) do
+    Profiler.runtime(:predict_batch, fn ->
+      probabilities =
+        CudaNif.predict_batch_binary(model.ref, batch.features_bin, batch.count, n_features)
 
-  defp reduce_prefetched_batches([first_path | remaining_paths], accumulator, fun) do
-    first_batch = read_raw_batch!(first_path)
+      record_cuda_timings(model.ref, :predict)
+      probabilities
+    end)
+  end
+
+  defp reduce_prefetched_batches([], accumulator, _load_event, _fun), do: accumulator
+
+  defp reduce_prefetched_batches([first_path | remaining_paths], accumulator, load_event, fun) do
+    first_batch = timed_read_raw_batch!(first_path)
 
     {accumulator, pending_task} =
       Enum.reduce(remaining_paths, {accumulator, nil}, fn path, {accumulator, pending_task} ->
-        next_task = Task.async(fn -> read_raw_batch!(path) end)
-        batch = if pending_task, do: Task.await(pending_task, :infinity), else: first_batch
-        {fun.(batch, accumulator), next_task}
+        next_task = Task.async(fn -> timed_read_raw_batch!(path) end)
+        timed_batch = if pending_task, do: Task.await(pending_task, :infinity), else: first_batch
+        {fun.(record_load(timed_batch, load_event), accumulator), next_task}
       end)
 
-    last_batch = if pending_task, do: Task.await(pending_task, :infinity), else: first_batch
-    fun.(last_batch, accumulator)
+    timed_batch = if pending_task, do: Task.await(pending_task, :infinity), else: first_batch
+    fun.(record_load(timed_batch, load_event), accumulator)
+  end
+
+  defp timed_read_raw_batch!(path) do
+    {us, batch} = :timer.tc(fn -> read_raw_batch!(path) end)
+    {batch, us}
+  end
+
+  defp record_load({batch, us}, event) do
+    Profiler.record(event, us)
+    batch
   end
 
   defp read_raw_batch!(path) do
@@ -79,6 +112,23 @@ defmodule Model do
       labels: for(<<value::float-little-32 <- labels_bin>>, do: value),
       count: count
     }
+  end
+
+  defp record_cuda_timings(model_ref, operation) do
+    if Profiler.enabled?() do
+      {cpu_to_gpu_us, gpu_compute_us, gpu_to_cpu_us} = CudaNif.last_timings(model_ref)
+
+      case operation do
+        :train ->
+          Profiler.record(:train_cpu_gpu_transfer, cpu_to_gpu_us)
+          Profiler.record(:train_gpu_compute, gpu_compute_us)
+
+        :predict ->
+          Profiler.record(:predict_cpu_gpu_transfer, cpu_to_gpu_us)
+          Profiler.record(:predict_gpu_compute, gpu_compute_us)
+          Profiler.record(:predict_gpu_cpu_transfer, gpu_to_cpu_us)
+      end
+    end
   end
 
   defp prob_to_class(prob), do: if(prob >= 0.5, do: 1, else: 0)

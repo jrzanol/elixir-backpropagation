@@ -4,11 +4,27 @@
 #include "cuda_runtime.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+
+static bool CudaOk(cudaError_t error, const char* operation)
+{
+    if (error == cudaSuccess)
+        return true;
+
+    std::fprintf(stderr, "CUDA %s falhou: %s\n", operation, cudaGetErrorString(error));
+    return false;
+}
+
+static long long ElapsedUs(std::chrono::steady_clock::time_point started)
+{
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - started).count();
+}
 
 static int DebugValueCount()
 {
@@ -98,7 +114,10 @@ MLPClassifierNIF::MLPClassifierNIF(const std::vector<int>& layers,
       m_cuDelta(NULL),
       m_cuBatchX(NULL),
       m_cuBatchY(NULL),
-      m_cuResults(NULL)
+      m_cuResults(NULL),
+      m_LastCpuToGpuUs(0),
+      m_LastGpuComputeUs(0),
+      m_LastGpuToCpuUs(0)
 {
     memset(m_cuWeightsPtr, 0, sizeof(m_cuWeightsPtr));
     memset(m_cuBiasesPtr,  0, sizeof(m_cuBiasesPtr));
@@ -267,6 +286,9 @@ bool MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
     const int inputSize    = m_MLPLayer.m_Layers[0];
     const int totalWeights = m_MLPLayer.m_TotalWeights;
     const int totalBiases  = m_MLPLayer.m_TotalBiases;
+    m_LastCpuToGpuUs = 0;
+    m_LastGpuComputeUs = 0;
+    m_LastGpuToCpuUs = 0;
 
     const char* dbgEnv = std::getenv("BACKPROP_DEBUG");
     const bool  debug  = (dbgEnv != NULL && dbgEnv[0] == '1' && !m_DebugSnapshotPrinted);
@@ -276,14 +298,23 @@ bool MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
     if (debug)
         PrintDebugSnapshot(0, m_MLPLayer, m_cuWeightsPtr, m_cuBiasesPtr, NULL, NULL, debugCount);
 
-    cudaMemset(m_cuGradW, 0, sizeof(float) * totalWeights);
-    cudaMemset(m_cuGradB, 0, sizeof(float) * totalBiases);
+    const auto transferStarted = std::chrono::steady_clock::now();
+    if (!CudaOk(cudaMemcpy(m_cuBatchX, trainx, sizeof(float) * inputSize * batchCount,
+                           cudaMemcpyHostToDevice), "copia batch X para GPU") ||
+        !CudaOk(cudaMemcpy(m_cuBatchY, trainy, sizeof(float) * batchCount,
+                           cudaMemcpyHostToDevice), "copia batch Y para GPU"))
+        return false;
+    m_LastCpuToGpuUs = ElapsedUs(transferStarted);
 
-    cudaMemcpy(m_cuBatchX, trainx, sizeof(float) * inputSize * batchCount, cudaMemcpyHostToDevice);
-    cudaMemcpy(m_cuBatchY, trainy, sizeof(float) * batchCount, cudaMemcpyHostToDevice);
+    const auto computeStarted = std::chrono::steady_clock::now();
+    if (!CudaOk(cudaMemset(m_cuGradW, 0, sizeof(float) * totalWeights), "cudaMemset gradW") ||
+        !CudaOk(cudaMemset(m_cuGradB, 0, sizeof(float) * totalBiases), "cudaMemset gradB"))
+        return false;
 
     LaunchFitKernel(m_cuMLPLayer, m_cuBatchX, m_cuBatchY,
                     batchCount, m_cuAct, m_cuDelta, m_cuGradW, m_cuGradB);
+    if (!CudaOk(cudaGetLastError(), "lancamento KernelFit"))
+        return false;
 
     for (int l = 1; l < m_MLPLayer.m_LayerCount; ++l)
     {
@@ -296,10 +327,13 @@ bool MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
             m_cuWeightsPtr[l], m_cuBiasesPtr[l],
             m_cuGradW + wOff,  m_cuGradB + bOff,
             wCount, bCount, learnRate, batchCount);
+        if (!CudaOk(cudaGetLastError(), "lancamento KernelUpdateWeights"))
+            return false;
     }
 
-    if (cudaDeviceSynchronize() != cudaSuccess)
+    if (!CudaOk(cudaDeviceSynchronize(), "sincronizacao do treino"))
         return false;
+    m_LastGpuComputeUs = ElapsedUs(computeStarted);
 
     if (debug)
     {
@@ -329,16 +363,46 @@ float* MLPClassifierNIF::Predict(float* testx, int testCount)
     const int inputSize    = m_MLPLayer.m_Layers[0];
     const int outputSize   = m_MLPLayer.m_Layers[m_MLPLayer.m_LayerCount - 1];
     float* results = new float[(size_t)testCount * outputSize];
+    m_LastCpuToGpuUs = 0;
+    m_LastGpuComputeUs = 0;
+    m_LastGpuToCpuUs = 0;
 
-    cudaMemcpy(m_cuBatchX, testx, sizeof(float) * inputSize * testCount, cudaMemcpyHostToDevice);
-
-    LaunchPredictKernel(m_cuMLPLayer, m_cuBatchX, m_cuResults, testCount, m_cuAct);
-
-    if (cudaMemcpy(results, m_cuResults, sizeof(float) * outputSize * testCount, cudaMemcpyDeviceToHost) != cudaSuccess)
+    const auto transferStarted = std::chrono::steady_clock::now();
+    if (!CudaOk(cudaMemcpy(m_cuBatchX, testx, sizeof(float) * inputSize * testCount,
+                           cudaMemcpyHostToDevice), "copia batch de predicao para GPU"))
     {
         delete[] results;
         return NULL;
     }
+    m_LastCpuToGpuUs = ElapsedUs(transferStarted);
+
+    const auto computeStarted = std::chrono::steady_clock::now();
+    LaunchPredictKernel(m_cuMLPLayer, m_cuBatchX, m_cuResults, testCount, m_cuAct);
+    if (!CudaOk(cudaGetLastError(), "lancamento KernelPredict") ||
+        !CudaOk(cudaDeviceSynchronize(), "sincronizacao da predicao"))
+    {
+        delete[] results;
+        return NULL;
+    }
+    m_LastGpuComputeUs = ElapsedUs(computeStarted);
+
+    const auto copyBackStarted = std::chrono::steady_clock::now();
+    if (!CudaOk(cudaMemcpy(results, m_cuResults, sizeof(float) * outputSize * testCount,
+                           cudaMemcpyDeviceToHost), "copia predicoes para CPU"))
+    {
+        delete[] results;
+        return NULL;
+    }
+    m_LastGpuToCpuUs = ElapsedUs(copyBackStarted);
 
     return results;
+}
+
+void MLPClassifierNIF::GetLastTimings(long long* cpuToGpuUs,
+                                      long long* gpuComputeUs,
+                                      long long* gpuToCpuUs) const
+{
+    *cpuToGpuUs = m_LastCpuToGpuUs;
+    *gpuComputeUs = m_LastGpuComputeUs;
+    *gpuToCpuUs = m_LastGpuToCpuUs;
 }

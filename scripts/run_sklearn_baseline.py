@@ -205,7 +205,7 @@ def main() -> None:
     n_features = int(metadata["n_features"])
     train_count = int(metadata["train_count"])
     test_count = int(metadata["test_count"])
-    hidden_layers = (max(8, n_features * 2), max(4, n_features))
+    hidden_layers = (256, 128)
 
     train_paths = batch_paths(args.dataset, "train")
     test_paths = batch_paths(args.dataset, "test")

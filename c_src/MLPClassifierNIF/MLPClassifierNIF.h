@@ -31,6 +31,7 @@ public:
 
     bool TrainBatch(float* trainx, float* trainy, int batchCount, float learnRate);
     float* Predict(float* testx, int testCount);
+    void GetLastTimings(long long* cpuToGpuUs, long long* gpuComputeUs, long long* gpuToCpuUs) const;
 
 private:
     bool EnsureBatchCapacity(int batchCount);
@@ -52,4 +53,8 @@ private:
     float* m_cuBatchX;
     float* m_cuBatchY;
     float* m_cuResults;
+
+    long long m_LastCpuToGpuUs;
+    long long m_LastGpuComputeUs;
+    long long m_LastGpuToCpuUs;
 };

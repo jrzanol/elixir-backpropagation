@@ -9,15 +9,13 @@ defmodule Main do
 
     IO.puts("Carregando dataset preparado...")
 
-    {prepare_us, streaming_dataset} =
-      :timer.tc(fn ->
+    streaming_dataset =
+      Profiler.runtime(:dataset_prepare, fn ->
         Dataset.prepare(dataset,
           train_ratio: train_ratio,
           seed: seed
         )
       end)
-
-    trace("prepare_seconds=#{Float.round(prepare_us / 1_000_000, 3)}")
 
     IO.puts(
       "Amostras: #{streaming_dataset.train_count + streaming_dataset.test_count}, Features: #{streaming_dataset.n_features}"
@@ -25,22 +23,19 @@ defmodule Main do
 
     IO.puts("Treino: #{streaming_dataset.train_count}, Teste: #{streaming_dataset.test_count}")
 
-    {materialize_us, batch_store} =
-      :timer.tc(fn ->
+    batch_store =
+      Profiler.runtime(:dataset_materialize, fn ->
         Dataset.materialize_batches(streaming_dataset, batch_size)
       end)
 
     try do
-      trace("materialize_seconds=#{Float.round(materialize_us / 1_000_000, 3)}")
       IO.puts("Batch size: #{batch_size}")
 
       IO.puts(
         "Batches treino: #{batch_store.train_batch_count}, teste: #{batch_store.test_batch_count}"
       )
 
-      hidden1 = max(8, streaming_dataset.n_features * 2)
-      hidden2 = max(4, streaming_dataset.n_features)
-      layers = [streaming_dataset.n_features, hidden1, hidden2, 1]
+      layers = Backpropagation.topology(streaming_dataset.n_features)
       IO.puts("Topologia: #{inspect(layers)}")
 
       IO.puts("\nTreinando #{epochs} epochs com lr=#{learn_rate}...")
@@ -67,7 +62,13 @@ defmodule Main do
       trace("backpropagation_seconds=#{Float.round(train_us / 1_000_000, 3)}")
 
       print_results(train_metrics, test_metrics)
-      Profiler.print(Map.get(result, :profile))
+      profile = Map.get(result, :profile)
+      Profiler.print(profile)
+
+      case System.get_env("BACKPROP_PROFILE_FILE") do
+        nil -> :ok
+        path -> Profiler.write_csv(profile, path)
+      end
     after
       Dataset.cleanup(batch_store)
     end

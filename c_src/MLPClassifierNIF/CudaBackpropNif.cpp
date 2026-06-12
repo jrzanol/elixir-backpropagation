@@ -296,12 +296,35 @@ static ERL_NIF_TERM predict_batch_binary_nif(ErlNifEnv* env, int argc, const ERL
     return predList;
 }
 
+static ERL_NIF_TERM last_timings_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    if (argc != 1)
+        return enif_make_badarg(env);
+
+    ModelResource* resource = NULL;
+    if (!get_model(env, argv[0], &resource))
+        return badarg(env, "modelo CUDA invalido");
+
+    long long cpuToGpuUs = 0;
+    long long gpuComputeUs = 0;
+    long long gpuToCpuUs = 0;
+    resource->model->GetLastTimings(&cpuToGpuUs, &gpuComputeUs, &gpuToCpuUs);
+
+    return enif_make_tuple3(
+        env,
+        enif_make_int64(env, cpuToGpuUs),
+        enif_make_int64(env, gpuComputeUs),
+        enif_make_int64(env, gpuToCpuUs)
+    );
+}
+
 static ErlNifFunc nif_funcs[] = {
     {"new_model", 3, new_model_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND},
     {"train_batch", 6, train_batch_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND},
     {"train_batch_binary", 6, train_batch_binary_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND},
     {"predict_batch", 4, predict_batch_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND},
-    {"predict_batch_binary", 4, predict_batch_binary_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND}
+    {"predict_batch_binary", 4, predict_batch_binary_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND},
+    {"last_timings", 1, last_timings_nif, 0}
 };
 
 ERL_NIF_INIT(Elixir.CudaNif, nif_funcs, load_nif, NULL, NULL, NULL)
