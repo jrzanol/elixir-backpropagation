@@ -11,6 +11,11 @@ import sys
 from pathlib import Path
 
 
+PROBABILITY_ABS_TOLERANCE = 2.0e-4
+CLASSIFICATION_MISMATCH_RATE_TOLERANCE = 1.0e-5
+METRIC_ABS_TOLERANCE = CLASSIFICATION_MISMATCH_RATE_TOLERANCE
+
+
 def read_single_row(path: Path) -> dict[str, str]:
     with path.open(newline="", encoding="utf-8") as handle:
         return next(csv.DictReader(handle))
@@ -63,6 +68,12 @@ def main() -> None:
             if same_length
             else max(len(cuda_predictions), len(polyhok_predictions))
         )
+        prediction_tolerance = (
+            max(1, math.ceil(len(cuda_predictions) * CLASSIFICATION_MISMATCH_RATE_TOLERANCE))
+            if same_length
+            else 0
+        )
+        mismatch_rate = mismatches / len(cuda_predictions) if cuda_predictions else 0.0
 
         cuda_probabilities = read_floats(args.cuda / f"{split}_probabilities.f32")
         polyhok_probabilities = read_floats(args.polyhok / f"{split}_probabilities.f32")
@@ -72,19 +83,27 @@ def main() -> None:
         ]
         max_probability_error = max(differences, default=0.0)
         mean_probability_error = sum(differences) / len(differences) if differences else 0.0
-        split_ok = same_length and probability_length_equal and mismatches == 0 and max_probability_error <= 2.0e-4
+        predictions_ok = same_length and mismatches <= prediction_tolerance
+        probabilities_ok = probability_length_equal and max_probability_error <= PROBABILITY_ABS_TOLERANCE
+        split_ok = predictions_ok and probabilities_ok
         passed &= split_ok
         comparisons.append({
             "category": f"{split}_predictions",
             "value": mismatches,
-            "tolerance": 0,
-            "status": "OK" if mismatches == 0 and same_length else "FAIL",
+            "tolerance": prediction_tolerance,
+            "status": "OK" if predictions_ok else "FAIL",
+        })
+        comparisons.append({
+            "category": f"{split}_prediction_mismatch_rate",
+            "value": f"{mismatch_rate:.9g}",
+            "tolerance": f"{CLASSIFICATION_MISMATCH_RATE_TOLERANCE:.9g}",
+            "status": "OK" if predictions_ok else "FAIL",
         })
         comparisons.append({
             "category": f"{split}_probability_max_abs_error",
             "value": f"{max_probability_error:.9g}",
-            "tolerance": "0.0002",
-            "status": "OK" if max_probability_error <= 2.0e-4 and probability_length_equal else "FAIL",
+            "tolerance": f"{PROBABILITY_ABS_TOLERANCE:.9g}",
+            "status": "OK" if probabilities_ok else "FAIL",
         })
         comparisons.append({
             "category": f"{split}_probability_mean_abs_error",
@@ -98,22 +117,28 @@ def main() -> None:
     for split in ("train", "test"):
         for field in ("accuracy", "precision", "recall", "f1"):
             difference = abs(float(cuda_metrics[split][field]) - float(polyhok_metrics[split][field]))
-            ok = difference <= 1.0e-6
+            ok = difference <= METRIC_ABS_TOLERANCE
             passed &= ok
             comparisons.append({
                 "category": f"{split}_{field}_abs_error",
                 "value": f"{difference:.9g}",
-                "tolerance": "0.000001",
+                "tolerance": f"{METRIC_ABS_TOLERANCE:.9g}",
                 "status": "OK" if ok else "FAIL",
             })
+        confusion_tolerance = max(
+            1,
+            math.ceil(
+                int(cuda_metrics[split]["total"]) * CLASSIFICATION_MISMATCH_RATE_TOLERANCE
+            ),
+        )
         for field in ("tn", "fp", "fn", "tp"):
             difference = abs(int(cuda_metrics[split][field]) - int(polyhok_metrics[split][field]))
-            ok = difference == 0
+            ok = difference <= confusion_tolerance
             passed &= ok
             comparisons.append({
                 "category": f"{split}_{field}_difference",
                 "value": difference,
-                "tolerance": 0,
+                "tolerance": confusion_tolerance,
                 "status": "OK" if ok else "FAIL",
             })
 

@@ -4,20 +4,21 @@
 
 static const int CUDA_BLOCK_SIZE = 256;
 
-void LaunchFitKernel(MLPLayer* layer,
+// Capacidade dos arrays locais act/delta por thread (numero maximo de neuronios
+// somando todas as camadas). Mantido em memoria local para cachear em L1.
+static const int MAX_NEURONS = 512;
+
+void LaunchFitKernel(const MLPLayer& layer,
                      const float* batchX,
                      const float* batchY,
                      int batchCount,
-                     float* act,
-                     float* delta,
                      float* gradW,
                      float* gradB);
 
-void LaunchPredictKernel(MLPLayer* layer,
+void LaunchPredictKernel(const MLPLayer& layer,
                          const float* batchX,
                          float* results,
-                         int batchCount,
-                         float* act);
+                         int batchCount);
 
 void LaunchUpdateWeightsKernel(float* weights,
                                float* biases,

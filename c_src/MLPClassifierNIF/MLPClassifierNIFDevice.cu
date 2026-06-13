@@ -25,12 +25,10 @@ __global__ void KernelUpdateWeights(float* weights, float* biases,
         biases[tid] -= scl * gradB[tid];
 }
 
-__global__ void KernelFit(MLPLayer* layer,
+__global__ void KernelFit(MLPLayer layer,
                           const float* batchX,
                           const float* batchY,
                           int batchCount,
-                          float* act,
-                          float* delta,
                           float* gradW,
                           float* gradB)
 {
@@ -38,137 +36,149 @@ __global__ void KernelFit(MLPLayer* layer,
     if (tid >= batchCount)
         return;
 
-    const int inputSize = layer->m_Layers[0];
-    for (int i = 0; i < inputSize; ++i)
-        act[(layer->m_NeuronOffset[0] + i) * batchCount + tid] = batchX[tid * inputSize + i];
+    // act/delta vivem em memoria local por thread: ficam em L1 e nao varrem a L2,
+    // deixando os pesos (reusados por todas as threads) quentes em cache.
+    float act[MAX_NEURONS];
+    float delta[MAX_NEURONS];
 
-    for (int l = 1; l < layer->m_LayerCount; ++l)
+    const int inputSize = layer.m_Layers[0];
+    for (int i = 0; i < inputSize; ++i)
+        act[i] = batchX[tid * inputSize + i];
+
+    for (int l = 1; l < layer.m_LayerCount; ++l)
     {
-        const int prevSize  = layer->m_Layers[l - 1];
-        const int currSize  = layer->m_Layers[l];
-        const bool isOutput = (l == layer->m_LayerCount - 1);
+        const int prevSize  = layer.m_Layers[l - 1];
+        const int currSize  = layer.m_Layers[l];
+        const int wOff      = layer.m_WeightOffset[l];
+        const int bOff      = layer.m_BiasOffset[l];
+        const int prevOff   = layer.m_NeuronOffset[l - 1];
+        const int currOff   = layer.m_NeuronOffset[l];
+        const bool isOutput = (l == layer.m_LayerCount - 1);
 
         for (int j = 0; j < currSize; ++j)
         {
-            float net = layer->m_Biases[l][j];
+            float net = layer.m_Biases[bOff + j];
             for (int i = 0; i < prevSize; ++i)
             {
-                net += layer->m_Weights[l][i * currSize + j]
-                     * act[(layer->m_NeuronOffset[l - 1] + i) * batchCount + tid];
+                net += layer.m_Weights[wOff + i * currSize + j]
+                     * act[prevOff + i];
             }
-            act[(layer->m_NeuronOffset[l] + j) * batchCount + tid] =
-                isOutput ? Sigmoid(net) : ReLU(net);
+            act[currOff + j] = isOutput ? Sigmoid(net) : ReLU(net);
         }
     }
 
-    const int outL    = layer->m_LayerCount - 1;
-    const int outSize = layer->m_Layers[outL];
+    const int outL    = layer.m_LayerCount - 1;
+    const int outSize = layer.m_Layers[outL];
+    const int outOff  = layer.m_NeuronOffset[outL];
     const float y     = batchY[tid];
 
     for (int j = 0; j < outSize; ++j)
-    {
-        const float yhat = act[(layer->m_NeuronOffset[outL] + j) * batchCount + tid];
-        delta[(layer->m_NeuronOffset[outL] + j) * batchCount + tid] = yhat - y;
-    }
+        delta[outOff + j] = act[outOff + j] - y;
 
     for (int l = outL - 1; l >= 1; --l)
     {
-        const int currSize = layer->m_Layers[l];
-        const int nextSize = layer->m_Layers[l + 1];
+        const int currSize = layer.m_Layers[l];
+        const int nextSize = layer.m_Layers[l + 1];
+        const int currOff  = layer.m_NeuronOffset[l];
+        const int nextOff  = layer.m_NeuronOffset[l + 1];
+        const int nextWOff = layer.m_WeightOffset[l + 1];
 
         for (int j = 0; j < currSize; ++j)
         {
             float sum = 0.f;
             for (int k = 0; k < nextSize; ++k)
-                sum += layer->m_Weights[l + 1][j * nextSize + k]
-                     * delta[(layer->m_NeuronOffset[l + 1] + k) * batchCount + tid];
+                sum += layer.m_Weights[nextWOff + j * nextSize + k]
+                     * delta[nextOff + k];
 
-            const float a = act[(layer->m_NeuronOffset[l] + j) * batchCount + tid];
-            delta[(layer->m_NeuronOffset[l] + j) * batchCount + tid] = sum * ReLUDeriv(a);
+            delta[currOff + j] = sum * ReLUDeriv(act[currOff + j]);
         }
     }
 
-    for (int l = 1; l < layer->m_LayerCount; ++l)
+    for (int l = 1; l < layer.m_LayerCount; ++l)
     {
-        const int prevSize = layer->m_Layers[l - 1];
-        const int currSize = layer->m_Layers[l];
-        const int wOff     = layer->m_WeightOffset[l];
-        const int bOff     = layer->m_BiasOffset[l];
+        const int prevSize = layer.m_Layers[l - 1];
+        const int currSize = layer.m_Layers[l];
+        const int wOff     = layer.m_WeightOffset[l];
+        const int bOff     = layer.m_BiasOffset[l];
+        const int prevOff  = layer.m_NeuronOffset[l - 1];
+        const int currOff  = layer.m_NeuronOffset[l];
 
         for (int j = 0; j < currSize; ++j)
         {
-            const float d = delta[(layer->m_NeuronOffset[l] + j) * batchCount + tid];
+            const float d = delta[currOff + j];
             atomicAdd(&gradB[bOff + j], d);
 
             for (int i = 0; i < prevSize; ++i)
             {
-                const float aPrev = act[(layer->m_NeuronOffset[l - 1] + i) * batchCount + tid];
+                const float aPrev = act[prevOff + i];
                 atomicAdd(&gradW[wOff + i * currSize + j], d * aPrev);
             }
         }
     }
 }
 
-__global__ void KernelPredict(MLPLayer* layer,
+__global__ void KernelPredict(MLPLayer layer,
                               const float* batchX,
                               float* results,
-                              int batchCount,
-                              float* act)
+                              int batchCount)
 {
     const int tid = threadIdx.x + blockIdx.x * (int)blockDim.x;
     if (tid >= batchCount)
         return;
 
-    const int inputSize = layer->m_Layers[0];
-    for (int i = 0; i < inputSize; ++i)
-        act[(layer->m_NeuronOffset[0] + i) * batchCount + tid] = batchX[tid * inputSize + i];
+    float act[MAX_NEURONS];
 
-    for (int l = 1; l < layer->m_LayerCount; ++l)
+    const int inputSize = layer.m_Layers[0];
+    for (int i = 0; i < inputSize; ++i)
+        act[i] = batchX[tid * inputSize + i];
+
+    for (int l = 1; l < layer.m_LayerCount; ++l)
     {
-        const int prevSize  = layer->m_Layers[l - 1];
-        const int currSize  = layer->m_Layers[l];
-        const bool isOutput = (l == layer->m_LayerCount - 1);
+        const int prevSize  = layer.m_Layers[l - 1];
+        const int currSize  = layer.m_Layers[l];
+        const int wOff      = layer.m_WeightOffset[l];
+        const int bOff      = layer.m_BiasOffset[l];
+        const int prevOff   = layer.m_NeuronOffset[l - 1];
+        const int currOff   = layer.m_NeuronOffset[l];
+        const bool isOutput = (l == layer.m_LayerCount - 1);
 
         for (int j = 0; j < currSize; ++j)
         {
-            float net = layer->m_Biases[l][j];
+            float net = layer.m_Biases[bOff + j];
             for (int i = 0; i < prevSize; ++i)
-                net += layer->m_Weights[l][i * currSize + j]
-                     * act[(layer->m_NeuronOffset[l - 1] + i) * batchCount + tid];
+                net += layer.m_Weights[wOff + i * currSize + j]
+                     * act[prevOff + i];
 
-            act[(layer->m_NeuronOffset[l] + j) * batchCount + tid] =
-                isOutput ? Sigmoid(net) : ReLU(net);
+            act[currOff + j] = isOutput ? Sigmoid(net) : ReLU(net);
         }
     }
 
-    const int outL    = layer->m_LayerCount - 1;
-    const int outSize = layer->m_Layers[outL];
+    const int outL    = layer.m_LayerCount - 1;
+    const int outSize = layer.m_Layers[outL];
+    const int outOff  = layer.m_NeuronOffset[outL];
     for (int j = 0; j < outSize; ++j)
-        results[tid * outSize + j] =
-            act[(layer->m_NeuronOffset[outL] + j) * batchCount + tid];
+        results[tid * outSize + j] = act[outOff + j];
 }
 
-void LaunchFitKernel(MLPLayer* layer,
+void LaunchFitKernel(const MLPLayer& layer,
                      const float* batchX,
                      const float* batchY,
                      int batchCount,
-                     float* act,
-                     float* delta,
                      float* gradW,
                      float* gradB)
 {
     const int grid = (batchCount + CUDA_BLOCK_SIZE - 1) / CUDA_BLOCK_SIZE;
-    KernelFit<<<grid, CUDA_BLOCK_SIZE>>>(layer, batchX, batchY, batchCount, act, delta, gradW, gradB);
+    KernelFit<<<grid, CUDA_BLOCK_SIZE>>>(
+        layer, batchX, batchY, batchCount, gradW, gradB);
 }
 
-void LaunchPredictKernel(MLPLayer* layer,
+void LaunchPredictKernel(const MLPLayer& layer,
                          const float* batchX,
                          float* results,
-                         int batchCount,
-                         float* act)
+                         int batchCount)
 {
     const int grid = (batchCount + CUDA_BLOCK_SIZE - 1) / CUDA_BLOCK_SIZE;
-    KernelPredict<<<grid, CUDA_BLOCK_SIZE>>>(layer, batchX, results, batchCount, act);
+    KernelPredict<<<grid, CUDA_BLOCK_SIZE>>>(layer, batchX, results, batchCount);
 }
 
 void LaunchUpdateWeightsKernel(float* weights,

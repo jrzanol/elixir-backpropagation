@@ -40,6 +40,7 @@ Topologia utilizada com o HIGGS: `[28, 256, 128, 1]`.
 
 ./2_RunCUDA.sh
 ./2_RunPolyHok.sh
+./2_RunPyTorch.sh
 ```
 
 ## Testes

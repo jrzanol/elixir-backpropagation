@@ -70,6 +70,10 @@ def max_difference(expected: list[float], actual: list[float]) -> float:
     return max((abs(left - right) for left, right in zip(expected, actual)), default=0.0)
 
 
+def tex_escape(value: object) -> str:
+    return str(value).replace("_", "\\_")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
@@ -126,7 +130,7 @@ def main() -> None:
         handle.write("\\begin{tabular}{llrl}\n\\hline\nImplementacao & Comparacao & Erro maximo & Status \\\\\n\\hline\n")
         for row in rows:
             handle.write(
-                f"{row['implementation']} & {str(row['comparison']).replace('_', '\\_')} & "
+                f"{row['implementation']} & {tex_escape(row['comparison'])} & "
                 f"{row['max_absolute_error']} & {row['status']} \\\\\n"
             )
         handle.write("\\hline\n\\end{tabular}\n")

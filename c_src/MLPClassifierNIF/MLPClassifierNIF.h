@@ -17,8 +17,8 @@ struct MLPLayer
     int m_TotalWeights;
     int m_TotalBiases;
 
-    float* m_Weights[MAX_LAYER];
-    float* m_Biases[MAX_LAYER];
+    float* m_Weights;
+    float* m_Biases;
 };
 
 class MLPClassifierNIF
@@ -40,16 +40,12 @@ private:
     bool m_DebugSnapshotPrinted;
     int  m_BatchCapacity;
 
-    MLPLayer  m_MLPLayer;
-    MLPLayer* m_cuMLPLayer;
+    MLPLayer m_MLPLayer;
 
-    float* m_cuWeightsPtr[MAX_LAYER];
-    float* m_cuBiasesPtr[MAX_LAYER];
-
+    float* m_cuWeights;
+    float* m_cuBiases;
     float* m_cuGradW;
     float* m_cuGradB;
-    float* m_cuAct;
-    float* m_cuDelta;
     float* m_cuBatchX;
     float* m_cuBatchY;
     float* m_cuResults;
