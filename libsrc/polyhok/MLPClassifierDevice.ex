@@ -47,6 +47,41 @@ PolyHok.defmodule_st MLPClassifierDevice do
     end
   end
 
+  # Versoes "fundidas" que tratam pesos e biases num unico lancamento. Cada
+  # PolyHok.spawn_st tem overhead de host (~ms); fundir reduz de 5 para 3 spawns
+  # por batch de treino, cortando esse overhead sem mudar a matematica.
+  deft(zero_two_kernel(tfloat ~> integer ~> tfloat ~> integer ~> unit))
+
+  defk zero_two_kernel(buf1, size1, buf2, size2) do
+    tid = blockIdx.x * blockDim.x + threadIdx.x
+
+    if tid < size1 do
+      buf1[tid] = 0.0
+    end
+
+    if tid < size2 do
+      buf2[tid] = 0.0
+    end
+  end
+
+  deft(
+    apply_update_two_kernel(
+      tfloat ~> tfloat ~> integer ~> tfloat ~> tfloat ~> integer ~> float ~> integer ~> unit
+    )
+  )
+
+  defk apply_update_two_kernel(p1, g1, size1, p2, g2, size2, lr, batch_count) do
+    tid = blockIdx.x * blockDim.x + threadIdx.x
+
+    if tid < size1 do
+      p1[tid] = p1[tid] - lr / batch_count * g1[tid]
+    end
+
+    if tid < size2 do
+      p2[tid] = p2[tid] - lr / batch_count * g2[tid]
+    end
+  end
+
   deft(
     train_batch_kernel(
       tfloat
@@ -81,15 +116,21 @@ PolyHok.defmodule_st MLPClassifierDevice do
          input_size,
          train_count
        ) do
-    tid = blockIdx.x * blockDim.x + threadIdx.x
+    # Uma amostra por BLOCO; threads cooperam sobre os neuronios de cada camada.
+    # act/delta em shared memory (uma copia por bloco), nao em arrays locais por thread,
+    # que estouravam para memoria local (DRAM). Mesma otimizacao aplicada ao NIF CUDA.
+    sample = blockIdx.x
+    t = threadIdx.x
+    nthreads = blockDim.x
 
-    act[512]
-    delta[512]
+    __shared__ act[512]
+    __shared__ delta[512]
 
-    if tid < train_count do
-      for i in range(0, input_size, 1) do
-        act[i] = train_x[tid * input_size + i]
+    if sample < train_count do
+      for i in range(t, input_size, nthreads) do
+        act[i] = train_x[sample * input_size + i]
       end
+      __syncthreads()
 
       for l in range(1, layer_count, 1) do
         prev_size = layers[l - 1]
@@ -100,7 +141,7 @@ PolyHok.defmodule_st MLPClassifierDevice do
         curr_off = neuron_offsets[l]
         is_output = l == layer_count - 1
 
-        for j in range(0, curr_size, 1) do
+        for j in range(t, curr_size, nthreads) do
           net = biases[b_off + j]
 
           for i in range(0, prev_size, 1) do
@@ -113,16 +154,18 @@ PolyHok.defmodule_st MLPClassifierDevice do
             act[curr_off + j] = relu(net)
           end
         end
+        __syncthreads()
       end
 
       out_l = layer_count - 1
       out_size = layers[out_l]
       out_off = neuron_offsets[out_l]
-      y = train_y[tid]
+      y = train_y[sample]
 
-      for j in range(0, out_size, 1) do
+      for j in range(t, out_size, nthreads) do
         delta[out_off + j] = act[out_off + j] - y
       end
+      __syncthreads()
 
       for rev in range(1, layer_count - 1, 1) do
         hl = layer_count - 1 - rev
@@ -132,7 +175,7 @@ PolyHok.defmodule_st MLPClassifierDevice do
         h_next_off = neuron_offsets[hl + 1]
         h_w_next_off = weight_offsets[hl + 1]
 
-        for j in range(0, h_curr_size, 1) do
+        for j in range(t, h_curr_size, nthreads) do
           sum = 0.0
 
           for k in range(0, h_next_size, 1) do
@@ -145,6 +188,7 @@ PolyHok.defmodule_st MLPClassifierDevice do
             delta[h_curr_off + j] = 0.0
           end
         end
+        __syncthreads()
       end
 
       for gl in range(1, layer_count, 1) do
@@ -155,7 +199,7 @@ PolyHok.defmodule_st MLPClassifierDevice do
         g_w_off = weight_offsets[gl]
         g_b_off = bias_offsets[gl]
 
-        for j in range(0, g_curr_size, 1) do
+        for j in range(t, g_curr_size, nthreads) do
           d = delta[g_curr_off + j]
           atomicAdd(grad_b + g_b_off + j, d)
 
@@ -197,14 +241,17 @@ PolyHok.defmodule_st MLPClassifierDevice do
          input_size,
          batch_count
        ) do
-    tid = blockIdx.x * blockDim.x + threadIdx.x
+    sample = blockIdx.x
+    t = threadIdx.x
+    nthreads = blockDim.x
 
-    act[512]
+    __shared__ act[512]
 
-    if tid < batch_count do
-      for i in range(0, input_size, 1) do
-        act[i] = batch_x[tid * input_size + i]
+    if sample < batch_count do
+      for i in range(t, input_size, nthreads) do
+        act[i] = batch_x[sample * input_size + i]
       end
+      __syncthreads()
 
       for l in range(1, layer_count, 1) do
         prev_size = layers[l - 1]
@@ -215,7 +262,7 @@ PolyHok.defmodule_st MLPClassifierDevice do
         curr_off = neuron_offsets[l]
         is_output = l == layer_count - 1
 
-        for j in range(0, curr_size, 1) do
+        for j in range(t, curr_size, nthreads) do
           net = biases[b_off + j]
 
           for i in range(0, prev_size, 1) do
@@ -228,11 +275,15 @@ PolyHok.defmodule_st MLPClassifierDevice do
             act[curr_off + j] = relu(net)
           end
         end
+        __syncthreads()
       end
 
       out_l = layer_count - 1
       out_off = neuron_offsets[out_l]
-      output[tid] = act[out_off]
+
+      if t == 0 do
+        output[sample] = act[out_off]
+      end
     end
   end
 end

@@ -150,7 +150,7 @@ defmodule MLPClassifierHost do
     Profiler.runtime(:predict_gpu_compute, fn ->
       PolyHok.spawn_st(
         &MLPClassifierDevice.predict_batch_kernel/11,
-        {div(batch_count + 255, 256), 1, 1},
+        {batch_count, 1, 1},
         {256, 1, 1},
         [
           state.gpu_weights,
@@ -166,6 +166,11 @@ defmodule MLPClassifierHost do
           batch_count
         ]
       )
+
+      # Mesmo motivo do treino: o kernel de predicao e assincrono. Sincronizamos antes
+      # de fechar o timer para que predict_gpu_compute meça o compute real, e o
+      # get_gnx seguinte (predict_gpu_cpu_transfer) meça apenas a transferencia D2H.
+      PolyHok.synchronize()
     end)
 
     Profiler.runtime(:predict_gpu_cpu_transfer, fn ->
@@ -180,26 +185,21 @@ defmodule MLPClassifierHost do
     debug_snapshot(0, state, false)
 
     Profiler.runtime(:train_gpu_compute, fn ->
-      # Zera gradientes dos pesos:
+      grad_blocks = div(max(state.total_weights, state.total_biases) + 255, 256)
+
+      # Zera gradientes de pesos e biases num unico lancamento:
       PolyHok.spawn_st(
-        &MLPClassifierDevice.zero_kernel/2,
-        {div(state.total_weights + 255, 256), 1, 1},
+        &MLPClassifierDevice.zero_two_kernel/4,
+        {grad_blocks, 1, 1},
         {256, 1, 1},
-        [state.gpu_grad_w, state.total_weights]
+        [state.gpu_grad_w, state.total_weights, state.gpu_grad_b, state.total_biases]
       )
 
-      # Zera gradientes dos biases:
-      PolyHok.spawn_st(
-        &MLPClassifierDevice.zero_kernel/2,
-        {div(state.total_biases + 255, 256), 1, 1},
-        {256, 1, 1},
-        [state.gpu_grad_b, state.total_biases]
-      )
-
-      # Treina o batch:
+      # Treina o batch: um bloco por amostra; threads cooperam sobre os neuronios
+      # (act/delta ficam em shared memory por bloco).
       PolyHok.spawn_st(
         &MLPClassifierDevice.train_batch_kernel/13,
-        {div(batch_count + 255, 256), 1, 1},
+        {batch_count, 1, 1},
         {256, 1, 1},
         [
           state.gpu_weights,
@@ -218,21 +218,30 @@ defmodule MLPClassifierHost do
         ]
       )
 
-      # Atualiza pesos:
+      # Atualiza pesos e biases num unico lancamento:
       PolyHok.spawn_st(
-        &MLPClassifierDevice.apply_mean_update_kernel/5,
-        {div(state.total_weights + 255, 256), 1, 1},
+        &MLPClassifierDevice.apply_update_two_kernel/8,
+        {grad_blocks, 1, 1},
         {256, 1, 1},
-        [state.gpu_weights, state.gpu_grad_w, learning_rate, batch_count, state.total_weights]
+        [
+          state.gpu_weights,
+          state.gpu_grad_w,
+          state.total_weights,
+          state.gpu_biases,
+          state.gpu_grad_b,
+          state.total_biases,
+          learning_rate,
+          batch_count
+        ]
       )
 
-      # Atualiza biases:
-      PolyHok.spawn_st(
-        &MLPClassifierDevice.apply_mean_update_kernel/5,
-        {div(state.total_biases + 255, 256), 1, 1},
-        {256, 1, 1},
-        [state.gpu_biases, state.gpu_grad_b, learning_rate, batch_count, state.total_biases]
-      )
+      # PolyHok.spawn_st lanca os kernels de forma assincrona e retorna na hora. Sem
+      # sincronizar, este timer mediria apenas o overhead de launch, e o tempo real de
+      # GPU vazaria para o cpu_gpu_transfer/batch_loading do batch seguinte (que so
+      # bloqueiam ao tocar a GPU). Fechamos a operacao aqui com cudaDeviceSynchronize
+      # (via API publica do PolyHok, sem alterar a dependencia) para que train_gpu_compute
+      # reflita o trabalho de treino efetivamente entregue, simetrico ao NIF CUDA.
+      PolyHok.synchronize()
     end)
 
     debug_snapshot(1, state, true)
