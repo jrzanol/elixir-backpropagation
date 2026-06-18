@@ -27,29 +27,9 @@ PolyHok.defmodule_st MLPClassifierDevice do
     return(result)
   end
 
-  deft(zero_kernel(tfloat ~> integer ~> unit))
-
-  defk zero_kernel(buffer, size) do
-    tid = blockIdx.x * blockDim.x + threadIdx.x
-
-    if tid < size do
-      buffer[tid] = 0.0
-    end
-  end
-
-  deft(apply_mean_update_kernel(tfloat ~> tfloat ~> float ~> integer ~> integer ~> unit))
-
-  defk apply_mean_update_kernel(params, grads, lr, batch_count, size) do
-    tid = blockIdx.x * blockDim.x + threadIdx.x
-
-    if tid < size do
-      params[tid] = params[tid] - lr / batch_count * grads[tid]
-    end
-  end
-
-  # Versoes "fundidas" que tratam pesos e biases num unico lancamento. Cada
-  # PolyHok.spawn_st tem overhead de host (~ms); fundir reduz de 5 para 3 spawns
-  # por batch de treino, cortando esse overhead sem mudar a matematica.
+  # Zerar gradientes e aplicar o update tratam pesos e biases num unico lancamento.
+  # Cada PolyHok.spawn_st tem overhead de host (~ms); um lancamento por operacao (em
+  # vez de um para pesos e outro para biases) reduz esse custo sem mudar a matematica.
   deft(zero_two_kernel(tfloat ~> integer ~> tfloat ~> integer ~> unit))
 
   defk zero_two_kernel(buf1, size1, buf2, size2) do

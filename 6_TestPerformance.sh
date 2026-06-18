@@ -21,7 +21,7 @@ export LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda-12/lib64:/usr/loca
 export MATREX_BLAS="${MATREX_BLAS:-noblas}"
 export BACKPROP_DATASET="$DATASET"
 export BACKPROP_TRAIN_RATIO="0.8"
-export BACKPROP_EPOCHS="10"
+export BACKPROP_EPOCHS="100"
 export BACKPROP_LEARN_RATE="0.01"
 export BACKPROP_SEED="42"
 export BACKPROP_BATCH_SIZE="$(awk -F= '$1 == "batch_size" {print $2}' "$DATASET/metadata.txt")"

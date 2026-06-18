@@ -28,7 +28,11 @@ defmodule Backpropagation do
         |> Model.new()
       end)
 
-    {model, profile} = train(model, train_batch_paths, epochs, learn_rate, n_features, profile)
+    {train_us, {model, profile}} =
+      :timer.tc(fn ->
+        train(model, train_batch_paths, epochs, learn_rate, n_features, profile)
+      end)
+
     {train_metrics, profile} = evaluate(model, train_batch_paths, n_features, profile)
     {test_metrics, profile} = evaluate(model, test_batch_paths, n_features, profile)
     profile = Profiler.merge_recorded(profile)
@@ -36,6 +40,7 @@ defmodule Backpropagation do
     %{
       train_metrics: train_metrics,
       test_metrics: test_metrics,
+      train_microseconds: train_us,
       profile: profile
     }
   end

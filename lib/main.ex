@@ -40,7 +40,7 @@ defmodule Main do
 
       IO.puts("\nTreinando #{epochs} epochs com lr=#{learn_rate}...")
 
-      {train_us, %{train_metrics: train_metrics, test_metrics: test_metrics} = result} =
+      {application_us, %{train_metrics: train_metrics, test_metrics: test_metrics} = result} =
         :timer.tc(fn ->
           Backpropagation.run(%{
             dataset: dataset,
@@ -59,9 +59,11 @@ defmodule Main do
           })
         end)
 
-      trace("backpropagation_seconds=#{Float.round(train_us / 1_000_000, 3)}")
+      trace("backpropagation_seconds=#{Float.round(application_us / 1_000_000, 3)}")
 
       print_results(train_metrics, test_metrics)
+      IO.puts("Tempo treino: #{format_seconds(result.train_microseconds)}s")
+
       profile = Map.get(result, :profile)
       Profiler.print(profile)
 
@@ -86,6 +88,11 @@ defmodule Main do
       nil -> default
       value -> String.to_float(value)
     end
+  end
+
+  defp format_seconds(microseconds) do
+    :io_lib.format("~.3f", [microseconds / 1_000_000])
+    |> IO.iodata_to_binary()
   end
 
   defp print_results(train_metrics, test_metrics) do

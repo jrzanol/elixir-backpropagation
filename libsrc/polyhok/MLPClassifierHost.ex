@@ -121,12 +121,6 @@ defmodule MLPClassifierHost do
     predict_gpu_batch(state, gpu_batch_x, gpu_output, batch.count)
   end
 
-  def predict_binary_batch_state(state, batch, gpu_output) do
-    state
-    |> predict_binary_probabilities_batch_state(batch, gpu_output)
-    |> Enum.map(fn prob -> if prob >= 0.5, do: 1, else: 0 end)
-  end
-
   def predict_binary_probabilities_batch_state(state, batch, gpu_output) do
     gpu_batch_x =
       Profiler.runtime(:predict_cpu_gpu_transfer, fn ->
@@ -182,7 +176,7 @@ defmodule MLPClassifierHost do
   end
 
   defp train_gpu_batch(state, gpu_train_x, gpu_train_y, batch_count, learning_rate) do
-    debug_snapshot(0, state, false)
+    debug_initial_snapshot(state)
 
     Profiler.runtime(:train_gpu_compute, fn ->
       grad_blocks = div(max(state.total_weights, state.total_biases) + 255, 256)
@@ -244,36 +238,64 @@ defmodule MLPClassifierHost do
       PolyHok.synchronize()
     end)
 
-    debug_snapshot(1, state, true)
+    debug_epoch_snapshot(state)
 
     state
   end
 
-  defp debug_snapshot(epoch, state, include_gradients) do
-    if System.get_env("BACKPROP_DEBUG") == "1" and
-         not Process.get(:backprop_debug_snapshot_printed, false) do
-      count =
-        case Integer.parse(System.get_env("BACKPROP_DEBUG_VALUES", "8")) do
-          {value, ""} when value > 0 -> value
-          _ -> 8
-        end
+  defp debug_initial_snapshot(state) do
+    if debug_enabled?() and not Process.get(:backprop_debug_initial_snapshot_printed, false) do
+      debug_snapshot(0, state, false)
+      Process.put(:backprop_debug_initial_snapshot_printed, true)
+    end
+  end
 
-      weights = gpu_values(state.gpu_weights, count)
-      biases = gpu_values(state.gpu_biases, count)
-      grad_w = if include_gradients, do: gpu_values(state.gpu_grad_w, count), else: []
-      grad_b = if include_gradients, do: gpu_values(state.gpu_grad_b, count), else: []
+  defp debug_epoch_snapshot(state) do
+    if debug_enabled?() do
+      batch_calls = Process.get(:backprop_debug_batch_calls, 0) + 1
+      Process.put(:backprop_debug_batch_calls, batch_calls)
 
-      IO.puts(
-        "[DEBUG_SNAPSHOT] impl=polyhok epoch=#{epoch}" <>
-          " weights=#{format_values(weights)}" <>
-          " biases=#{format_values(biases)}" <>
-          " grad_w=#{format_values(grad_w)}" <>
-          " grad_b=#{format_values(grad_b)}"
-      )
+      case debug_batches_per_epoch() do
+        value when value <= 0 ->
+          if batch_calls == 1, do: debug_snapshot(1, state, true)
 
-      if epoch == 1 do
-        Process.put(:backprop_debug_snapshot_printed, true)
+        batches_per_epoch ->
+          if rem(batch_calls, batches_per_epoch) == 0 do
+            debug_snapshot(div(batch_calls, batches_per_epoch), state, true)
+          end
       end
+    end
+  end
+
+  defp debug_snapshot(epoch, state, include_gradients) do
+    count = debug_value_count()
+    weights = gpu_values(state.gpu_weights, count)
+    biases = gpu_values(state.gpu_biases, count)
+    grad_w = if include_gradients, do: gpu_values(state.gpu_grad_w, count), else: []
+    grad_b = if include_gradients, do: gpu_values(state.gpu_grad_b, count), else: []
+
+    IO.puts(
+      "[DEBUG_SNAPSHOT] impl=polyhok epoch=#{epoch}" <>
+        " weights=#{format_values(weights)}" <>
+        " biases=#{format_values(biases)}" <>
+        " grad_w=#{format_values(grad_w)}" <>
+        " grad_b=#{format_values(grad_b)}"
+    )
+  end
+
+  defp debug_enabled?, do: System.get_env("BACKPROP_DEBUG") == "1"
+
+  defp debug_value_count do
+    case Integer.parse(System.get_env("BACKPROP_DEBUG_VALUES", "8")) do
+      {value, ""} when value > 0 -> value
+      _ -> 8
+    end
+  end
+
+  defp debug_batches_per_epoch do
+    case Integer.parse(System.get_env("BACKPROP_DEBUG_BATCHES_PER_EPOCH", "0")) do
+      {value, ""} when value > 0 -> value
+      _ -> 0
     end
   end
 

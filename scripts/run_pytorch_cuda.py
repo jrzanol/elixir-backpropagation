@@ -287,20 +287,24 @@ def main() -> None:
     torch.cuda.reset_peak_memory_stats(device)
     started = time.perf_counter()
     model.train()
-    debug_snapshot_printed = False
+    debug_enabled = os.environ.get("BACKPROP_DEBUG") == "1"
+    debug_initial_snapshot_printed = False
     for epoch in range(1, args.epochs + 1):
+        last_batch_count = 0
         for batch in prefetched_batches(train_paths):
             features = batch.features.to(device, non_blocking=True)
             labels = batch.labels.to(device, non_blocking=True)
-            if not debug_snapshot_printed:
+            if debug_enabled and not debug_initial_snapshot_printed:
                 print_debug_snapshot(model, 0, batch.labels.numel(), False)
+                debug_initial_snapshot_printed = True
             optimizer.zero_grad(set_to_none=True)
             loss = loss_function(model(features), labels)
             loss.backward()
             optimizer.step()
-            if not debug_snapshot_printed:
-                print_debug_snapshot(model, 1, batch.labels.numel(), True)
-                debug_snapshot_printed = os.environ.get("BACKPROP_DEBUG") == "1"
+            last_batch_count = batch.labels.numel()
+
+        if debug_enabled:
+            print_debug_snapshot(model, epoch, last_batch_count, True)
 
         if epoch % 100 == 0:
             print(f"Epoch {epoch}/{args.epochs} concluida")

@@ -11,7 +11,7 @@ export LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda-12/lib64:/usr/loca
 export MATREX_BLAS="${MATREX_BLAS:-noblas}"
 export BACKPROP_DATASET="$DATASET"
 export BACKPROP_TRAIN_RATIO="${BACKPROP_TRAIN_RATIO:-0.8}"
-export BACKPROP_EPOCHS="${BACKPROP_EPOCHS:-1}"
+export BACKPROP_EPOCHS="${BACKPROP_EPOCHS:-5}"
 export BACKPROP_LEARN_RATE="${BACKPROP_LEARN_RATE:-0.01}"
 export BACKPROP_SEED="${BACKPROP_SEED:-42}"
 export BACKPROP_PROFILE="${BACKPROP_PROFILE:-0}"
@@ -29,6 +29,12 @@ if ! [[ "$BACKPROP_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
+export BACKPROP_DEBUG_BATCHES_PER_EPOCH="$(awk -F= '$1 == "train_batch_count" {print $2}' "$DATASET/metadata.txt")"
+if ! [[ "$BACKPROP_DEBUG_BATCHES_PER_EPOCH" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERRO: train_batch_count invalido no metadata: $BACKPROP_DEBUG_BATCHES_PER_EPOCH" >&2
+  exit 1
+fi
+
 PYTHON="$PROJECT_ROOT/.venv-pytorch/bin/python"
 if [ ! -x "$PYTHON" ]; then
   echo "ERRO: ambiente PyTorch nao encontrado. Execute ./0_InstallPyTorch.sh." >&2
@@ -42,12 +48,13 @@ require_snapshots() {
   local implementation="$1"
   local log_file="$2"
 
-  if ! grep -q "\[DEBUG_SNAPSHOT\] impl=$implementation epoch=0" "$log_file" ||
-     ! grep -q "\[DEBUG_SNAPSHOT\] impl=$implementation epoch=1" "$log_file"; then
-    echo "ERRO: snapshots de $implementation nao foram gerados em $log_file." >&2
-    echo "Confirme que a implementacao foi recompilada com a instrumentacao atual." >&2
-    exit 1
-  fi
+  for epoch in $(seq 0 "$BACKPROP_EPOCHS"); do
+    if ! grep -q "\[DEBUG_SNAPSHOT\] impl=$implementation epoch=$epoch " "$log_file"; then
+      echo "ERRO: snapshot de $implementation epoch=$epoch nao foi gerado em $log_file." >&2
+      echo "Confirme que a implementacao foi recompilada com a instrumentacao atual." >&2
+      exit 1
+    fi
+  done
 }
 
 echo "[INFO] Recompilando CUDA/NIF..."
@@ -56,19 +63,19 @@ echo "[INFO] Recompilando CUDA/NIF..."
 echo "[INFO] Recompilando PolyHok..."
 ./1_CompilePolyHok.sh
 
-echo "[INFO] Capturando primeira atualizacao CUDA/NIF..."
+echo "[INFO] Capturando snapshots CUDA/NIF por $BACKPROP_EPOCHS epochs..."
 export BACKPROP_IMPL="cuda"
 export MIX_BUILD_PATH="$PROJECT_ROOT/_build/cuda"
 mix run -e 'Main.run()' 2>&1 | tee "$REPORT_DIR/cuda.log"
 require_snapshots cuda "$REPORT_DIR/cuda.log"
 
-echo "[INFO] Capturando primeira atualizacao PolyHok..."
+echo "[INFO] Capturando snapshots PolyHok por $BACKPROP_EPOCHS epochs..."
 export BACKPROP_IMPL="polyhok"
 export MIX_BUILD_PATH="$PROJECT_ROOT/_build/polyhok"
 mix run -e 'Main.run()' 2>&1 | tee "$REPORT_DIR/polyhok.log"
 require_snapshots polyhok "$REPORT_DIR/polyhok.log"
 
-echo "[INFO] Capturando primeira atualizacao PyTorch..."
+echo "[INFO] Capturando snapshots PyTorch por $BACKPROP_EPOCHS epochs..."
 "$PYTHON" "$PROJECT_ROOT/scripts/run_pytorch_cuda.py" \
   --dataset "$DATASET" \
   --train-ratio "$BACKPROP_TRAIN_RATIO" \
@@ -80,6 +87,9 @@ require_snapshots pytorch "$REPORT_DIR/pytorch.log"
 
 echo "[INFO] Comparando pesos, biases e gradientes..."
 "$PYTHON" "$PROJECT_ROOT/scripts/compare_debug_snapshots.py" \
+  --epochs "$BACKPROP_EPOCHS" \
+  --csv "$REPORT_DIR/comparison.csv" \
+  --tex "$REPORT_DIR/comparison.tex" \
   "$REPORT_DIR/cuda.log" \
   "$REPORT_DIR/polyhok.log" \
   "$REPORT_DIR/pytorch.log" | tee "$REPORT_DIR/comparison.txt"

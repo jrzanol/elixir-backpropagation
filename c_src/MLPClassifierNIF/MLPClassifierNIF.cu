@@ -36,6 +36,16 @@ static int DebugValueCount()
     return parsed > 0 ? parsed : 8;
 }
 
+static int DebugBatchesPerEpoch()
+{
+    const char* value = std::getenv("BACKPROP_DEBUG_BATCHES_PER_EPOCH");
+    if (value == NULL)
+        return 0;
+
+    const int parsed = std::atoi(value);
+    return parsed > 0 ? parsed : 0;
+}
+
 static void PrintDebugValues(const char* name, const std::vector<float>& values)
 {
     std::printf(" %s=[", name);
@@ -78,7 +88,8 @@ MLPClassifierNIF::MLPClassifierNIF(const std::vector<int>& layers,
                                    const std::vector<float>& flatWeights,
                                    const std::vector<float>& flatBiases)
     : m_Initialized(false),
-      m_DebugSnapshotPrinted(false),
+      m_DebugInitialSnapshotPrinted(false),
+      m_DebugBatchCalls(0),
       m_BatchCapacity(0),
       m_cuWeights(NULL),
       m_cuBiases(NULL),
@@ -229,12 +240,15 @@ bool MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
     m_LastGpuToCpuUs = 0;
 
     const char* dbgEnv = std::getenv("BACKPROP_DEBUG");
-    const bool  debug  = (dbgEnv != NULL && dbgEnv[0] == '1' && !m_DebugSnapshotPrinted);
+    const bool  debug  = (dbgEnv != NULL && dbgEnv[0] == '1');
     const int debugCount = DebugValueCount();
-    float dbgBuf[4];
+    const int debugBatchesPerEpoch = DebugBatchesPerEpoch();
 
-    if (debug)
+    if (debug && !m_DebugInitialSnapshotPrinted)
+    {
         PrintDebugSnapshot(0, m_MLPLayer, m_cuWeights, m_cuBiases, NULL, NULL, debugCount);
+        m_DebugInitialSnapshotPrinted = true;
+    }
 
     const auto transferStarted = std::chrono::steady_clock::now();
     if (!CudaOk(cudaMemcpy(m_cuBatchX, trainx, sizeof(float) * inputSize * batchCount,
@@ -266,20 +280,24 @@ bool MLPClassifierNIF::TrainBatch(float* trainx, float* trainy,
 
     if (debug)
     {
-        PrintDebugSnapshot(1, m_MLPLayer, m_cuWeights, m_cuBiases, m_cuGradW, m_cuGradB, debugCount);
-        std::printf("[DEBUG] Batch treinado\n");
-        for (int l = 1; l < m_MLPLayer.m_LayerCount; ++l)
+        ++m_DebugBatchCalls;
+
+        if (debugBatchesPerEpoch <= 0)
         {
-            const int wCount = m_MLPLayer.m_Layers[l - 1] * m_MLPLayer.m_Layers[l];
-            const int take   = wCount < 4 ? wCount : 4;
-            cudaMemcpy(dbgBuf, m_cuWeights + m_MLPLayer.m_WeightOffset[l],
-                       sizeof(float) * take, cudaMemcpyDeviceToHost);
-            std::printf("[DEBUG] Layer %d:", l);
-            for (int k = 0; k < take; ++k)
-                std::printf(" %.6f", dbgBuf[k]);
-            std::printf("\n");
+            if (m_DebugBatchCalls == 1)
+                PrintDebugSnapshot(1, m_MLPLayer, m_cuWeights, m_cuBiases, m_cuGradW, m_cuGradB, debugCount);
         }
-        m_DebugSnapshotPrinted = true;
+        else if (m_DebugBatchCalls % debugBatchesPerEpoch == 0)
+        {
+            PrintDebugSnapshot(
+                m_DebugBatchCalls / debugBatchesPerEpoch,
+                m_MLPLayer,
+                m_cuWeights,
+                m_cuBiases,
+                m_cuGradW,
+                m_cuGradB,
+                debugCount);
+        }
     }
 
     return true;
