@@ -34,32 +34,43 @@ defmodule Model do
   end
 
   def train_epoch(model, batch_paths, n_features, learn_rate) do
-    reduce_prefetched_batches(batch_paths, model, :load_train_batch, fn batch, model ->
-      Profiler.runtime(:train_batch, fn ->
-        :ok =
-          CudaNif.train_batch_binary(
-            model.ref,
-            batch.features_bin,
-            batch.labels_bin,
-            batch.count,
-            n_features,
-            learn_rate
-          )
+    reduce_prefetched_batches(
+      batch_paths,
+      model,
+      :load_train_batch,
+      &read_raw_train_batch!/1,
+      fn batch, model ->
+        Profiler.runtime(:train_batch, fn ->
+          :ok =
+            CudaNif.train_batch_binary(
+              model.ref,
+              batch.features_bin,
+              batch.labels_bin,
+              batch.count,
+              n_features,
+              learn_rate
+            )
 
-        record_cuda_timings(model.ref, :train)
-      end)
+          record_cuda_timings(model.ref, :train)
+        end)
 
-      model
-    end)
+        model
+      end
+    )
   end
 
   def evaluate_paths(model, batch_paths, n_features) do
-    reduce_prefetched_batches(batch_paths, Metrics.new(), :load_predict_batch, fn batch,
-                                                                                  metrics ->
-      probabilities = predict_binary_probabilities(model, batch, n_features)
-      predictions = Enum.map(probabilities, &prob_to_class/1)
-      Metrics.update(metrics, predictions, batch.labels)
-    end)
+    reduce_prefetched_batches(
+      batch_paths,
+      Metrics.new(),
+      :load_predict_batch,
+      &read_raw_predict_batch!/1,
+      fn batch, metrics ->
+        probabilities = predict_binary_probabilities(model, batch, n_features)
+        predictions = Enum.map(probabilities, &prob_to_class/1)
+        Metrics.update(metrics, predictions, batch.labels)
+      end
+    )
   end
 
   def predict_binary_probabilities(model, batch, n_features) do
@@ -72,14 +83,20 @@ defmodule Model do
     end)
   end
 
-  defp reduce_prefetched_batches([], accumulator, _load_event, _fun), do: accumulator
+  defp reduce_prefetched_batches([], accumulator, _load_event, _read_fun, _fun), do: accumulator
 
-  defp reduce_prefetched_batches([first_path | remaining_paths], accumulator, load_event, fun) do
-    first_batch = timed_read_raw_batch!(first_path)
+  defp reduce_prefetched_batches(
+         [first_path | remaining_paths],
+         accumulator,
+         load_event,
+         read_fun,
+         fun
+       ) do
+    first_batch = timed_read_raw_batch!(first_path, read_fun)
 
     {accumulator, pending_task} =
       Enum.reduce(remaining_paths, {accumulator, nil}, fn path, {accumulator, pending_task} ->
-        next_task = Task.async(fn -> timed_read_raw_batch!(path) end)
+        next_task = Task.async(fn -> timed_read_raw_batch!(path, read_fun) end)
         timed_batch = if pending_task, do: Task.await(pending_task, :infinity), else: first_batch
         {fun.(record_load(timed_batch, load_event), accumulator), next_task}
       end)
@@ -88,8 +105,8 @@ defmodule Model do
     fun.(record_load(timed_batch, load_event), accumulator)
   end
 
-  defp timed_read_raw_batch!(path) do
-    {us, batch} = :timer.tc(fn -> read_raw_batch!(path) end)
+  defp timed_read_raw_batch!(path, read_fun) do
+    {us, batch} = :timer.tc(fn -> read_fun.(path) end)
     {batch, us}
   end
 
@@ -98,7 +115,27 @@ defmodule Model do
     batch
   end
 
-  defp read_raw_batch!(path) do
+  defp read_raw_train_batch!(path) do
+    {features_bin, labels_bin, count, _n_features} = read_batch_binaries!(path)
+
+    %{
+      features_bin: features_bin,
+      labels_bin: labels_bin,
+      count: count
+    }
+  end
+
+  defp read_raw_predict_batch!(path) do
+    {features_bin, labels_bin, count, _n_features} = read_batch_binaries!(path)
+
+    %{
+      features_bin: features_bin,
+      labels: for(<<value::float-little-32 <- labels_bin>>, do: value),
+      count: count
+    }
+  end
+
+  defp read_batch_binaries!(path) do
     <<"BPBATCH1", count::unsigned-little-32, n_features::unsigned-little-32, payload::binary>> =
       File.read!(path)
 
@@ -106,12 +143,7 @@ defmodule Model do
     label_bytes = count * 4
     <<features_bin::binary-size(feature_bytes), labels_bin::binary-size(label_bytes)>> = payload
 
-    %{
-      features_bin: features_bin,
-      labels_bin: labels_bin,
-      labels: for(<<value::float-little-32 <- labels_bin>>, do: value),
-      count: count
-    }
+    {features_bin, labels_bin, count, n_features}
   end
 
   defp record_cuda_timings(model_ref, operation) do
