@@ -1,6 +1,6 @@
 defmodule Profiler do
   @moduledoc """
-  Coleta tempos internos opcionais do fluxo de backpropagation.
+  Profiler dos dados obtidos.
   """
 
   @events [

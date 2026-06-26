@@ -2,10 +2,7 @@ require PolyHok
 
 PolyHok.defmodule_st MLPClassifierDevice do
   @moduledoc """
-  Kernels e funcoes device da implementacao PolyHok.
-
-  Este modulo nao prepara dados nem controla epochs. Ele apenas declara os
-  kernels CUDA usados por `MLPClassifierHost`.
+  Código Device da implementação PolyHok.
   """
 
   deft(sigmoid(float ~> float))
@@ -27,11 +24,7 @@ PolyHok.defmodule_st MLPClassifierDevice do
     return(result)
   end
 
-  # Zerar gradientes e aplicar o update tratam pesos e biases num unico lancamento.
-  # Cada PolyHok.spawn_st tem overhead de host (~ms); um lancamento por operacao (em
-  # vez de um para pesos e outro para biases) reduz esse custo sem mudar a matematica.
   deft(zero_two_kernel(tfloat ~> integer ~> tfloat ~> integer ~> unit))
-
   defk zero_two_kernel(buf1, size1, buf2, size2) do
     tid = blockIdx.x * blockDim.x + threadIdx.x
 
@@ -49,7 +42,6 @@ PolyHok.defmodule_st MLPClassifierDevice do
       tfloat ~> tfloat ~> integer ~> tfloat ~> tfloat ~> integer ~> float ~> integer ~> unit
     )
   )
-
   defk apply_update_two_kernel(p1, g1, size1, p2, g2, size2, lr, batch_count) do
     tid = blockIdx.x * blockDim.x + threadIdx.x
 
@@ -80,7 +72,6 @@ PolyHok.defmodule_st MLPClassifierDevice do
       ~> unit
     )
   )
-
   defk train_batch_kernel(
          weights,
          biases,
@@ -96,9 +87,6 @@ PolyHok.defmodule_st MLPClassifierDevice do
          input_size,
          train_count
        ) do
-    # Uma amostra por BLOCO; threads cooperam sobre os neuronios de cada camada.
-    # act/delta em shared memory (uma copia por bloco), nao em arrays locais por thread,
-    # que estouravam para memoria local (DRAM). Mesma otimizacao aplicada ao NIF CUDA.
     sample = blockIdx.x
     t = threadIdx.x
     nthreads = blockDim.x
@@ -207,7 +195,6 @@ PolyHok.defmodule_st MLPClassifierDevice do
       ~> unit
     )
   )
-
   defk predict_batch_kernel(
          weights,
          biases,

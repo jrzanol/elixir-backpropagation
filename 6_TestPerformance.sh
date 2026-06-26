@@ -6,6 +6,20 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATASET="$PROJECT_ROOT/scripts/prepared_dataset"
 RESULT_DIR="$PROJECT_ROOT/reports/performance_$(date +%Y%m%d_%H%M%S)"
 RUNS="${BACKPROP_PERFORMANCE_RUNS:-11}"
+IMPLEMENTATIONS="${BACKPROP_PERFORMANCE_IMPLS:-cuda polyhok}"
+IMPLEMENTATIONS="${IMPLEMENTATIONS//,/ }"
+read -r -a IMPLEMENTATION_LIST <<< "$IMPLEMENTATIONS"
+
+contains_implementation() {
+  local expected="$1"
+  local implementation
+  for implementation in "${IMPLEMENTATION_LIST[@]}"; do
+    if [ "$implementation" = "$expected" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 if ! [[ "$RUNS" =~ ^[1-9][0-9]*$ ]]; then
   echo "ERRO: BACKPROP_PERFORMANCE_RUNS invalido: $RUNS" >&2
@@ -15,6 +29,19 @@ if [ "$RUNS" -lt 11 ] && [ "${BACKPROP_PERFORMANCE_SMOKE:-0}" != "1" ]; then
   echo "ERRO: o benchmark exige ao menos 11 execucoes: 1 aquecimento e 10 amostras." >&2
   exit 1
 fi
+if [ "${#IMPLEMENTATION_LIST[@]}" -eq 0 ]; then
+  echo "ERRO: BACKPROP_PERFORMANCE_IMPLS nao informou nenhuma implementacao." >&2
+  exit 1
+fi
+for implementation in "${IMPLEMENTATION_LIST[@]}"; do
+  case "$implementation" in
+    cuda | polyhok) ;;
+    *)
+      echo "ERRO: BACKPROP_PERFORMANCE_IMPLS invalido: $implementation. Use cuda, polyhok ou ambos." >&2
+      exit 1
+      ;;
+  esac
+done
 
 export PATH="$HOME/.asdf/shims:$HOME/.asdf/bin:$HOME/.asdl/shims:$HOME/.asdl/bin:/usr/local/cuda/bin:/usr/local/cuda-12/bin:/usr/local/cuda-12.9/bin:$PATH"
 export LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda-12/lib64:/usr/local/cuda-12.9/lib64:${LD_LIBRARY_PATH:-}"
@@ -32,12 +59,14 @@ RAW="$RESULT_DIR/raw_executions.csv"
 echo "implementation,run,warmup,compile_microseconds,application_microseconds,profile_file" > "$RAW"
 cd "$PROJECT_ROOT"
 
-if [ ! -d "$PROJECT_ROOT/deps/poly_hok" ]; then
+echo "[INFO] Implementacoes: ${IMPLEMENTATION_LIST[*]}"
+
+if contains_implementation "polyhok" && [ ! -d "$PROJECT_ROOT/deps/poly_hok" ]; then
   echo "[INFO] Preparando dependencia PolyHok antes das medicoes..."
   ./1_CompilePolyHok.sh > "$RESULT_DIR/polyhok_preparation.log" 2>&1
 fi
 
-for implementation in cuda polyhok; do
+for implementation in "${IMPLEMENTATION_LIST[@]}"; do
   mkdir -p "$RESULT_DIR/$implementation"
 
   for run in $(seq 1 "$RUNS"); do

@@ -27,17 +27,23 @@ defmodule Model do
   end
 
   def train_epoch(model, batch_paths, _n_features, learn_rate) do
-    reduce_prefetched_batches(batch_paths, model, :load_train_batch, fn batch, model ->
-      Profiler.runtime(:train_batch, fn ->
-        MLPClassifierHost.train_binary_batch_state(model, batch, learn_rate)
-      end)
-    end)
+    reduce_prefetched_batches(
+      batch_paths,
+      model,
+      :load_train_batch,
+      &read_raw_train_batch!/1,
+      fn batch, model ->
+        Profiler.runtime(:train_batch, fn ->
+          MLPClassifierHost.train_binary_batch_state(model, batch, learn_rate)
+        end)
+      end
+    )
   end
 
   def evaluate_paths(_model, [], _n_features), do: Metrics.new()
 
   def evaluate_paths(model, [first_path | remaining_paths], _n_features) do
-    first_timed_batch = timed_read_raw_batch!(first_path)
+    first_timed_batch = timed_read_raw_batch!(first_path, &read_raw_predict_batch!/1)
     first_batch = record_load(first_timed_batch, :load_predict_batch)
     gpu_output = PolyHok.new_gnx(1, first_batch.count, {:f, 32})
 
@@ -51,6 +57,7 @@ defmodule Model do
         first_batch.labels
       ),
       :load_predict_batch,
+      &read_raw_predict_batch!/1,
       fn batch, metrics ->
         probabilities = predict_binary_probabilities(model, batch, gpu_output)
         Metrics.update(metrics, Enum.map(probabilities, &prob_to_class/1), batch.labels)
@@ -66,14 +73,20 @@ defmodule Model do
     end)
   end
 
-  defp reduce_prefetched_batches([], accumulator, _load_event, _fun), do: accumulator
+  defp reduce_prefetched_batches([], accumulator, _load_event, _read_fun, _fun), do: accumulator
 
-  defp reduce_prefetched_batches([first_path | remaining_paths], accumulator, load_event, fun) do
-    first_batch = timed_read_raw_batch!(first_path)
+  defp reduce_prefetched_batches(
+         [first_path | remaining_paths],
+         accumulator,
+         load_event,
+         read_fun,
+         fun
+       ) do
+    first_batch = timed_read_raw_batch!(first_path, read_fun)
 
     {accumulator, pending_task} =
       Enum.reduce(remaining_paths, {accumulator, nil}, fn path, {accumulator, pending_task} ->
-        next_task = Task.async(fn -> timed_read_raw_batch!(path) end)
+        next_task = Task.async(fn -> timed_read_raw_batch!(path, read_fun) end)
         timed_batch = if pending_task, do: Task.await(pending_task, :infinity), else: first_batch
         {fun.(record_load(timed_batch, load_event), accumulator), next_task}
       end)
@@ -82,8 +95,8 @@ defmodule Model do
     fun.(record_load(timed_batch, load_event), accumulator)
   end
 
-  defp timed_read_raw_batch!(path) do
-    {us, batch} = :timer.tc(fn -> read_raw_batch!(path) end)
+  defp timed_read_raw_batch!(path, read_fun) do
+    {us, batch} = :timer.tc(fn -> read_fun.(path) end)
     {batch, us}
   end
 
@@ -92,13 +105,19 @@ defmodule Model do
     batch
   end
 
-  defp read_raw_batch!(path) do
-    <<"BPBATCH1", count::unsigned-little-32, n_features::unsigned-little-32, payload::binary>> =
-      File.read!(path)
+  defp read_raw_train_batch!(path) do
+    {features_bin, labels_bin, count, n_features} = read_batch_binaries!(path)
 
-    feature_bytes = count * n_features * 4
-    label_bytes = count * 4
-    <<features_bin::binary-size(feature_bytes), labels_bin::binary-size(label_bytes)>> = payload
+    %{
+      features_bin: features_bin,
+      labels_bin: labels_bin,
+      count: count,
+      n_features: n_features
+    }
+  end
+
+  defp read_raw_predict_batch!(path) do
+    {features_bin, labels_bin, count, n_features} = read_batch_binaries!(path)
 
     %{
       features_bin: features_bin,
@@ -107,6 +126,17 @@ defmodule Model do
       count: count,
       n_features: n_features
     }
+  end
+
+  defp read_batch_binaries!(path) do
+    <<"BPBATCH1", count::unsigned-little-32, n_features::unsigned-little-32, payload::binary>> =
+      File.read!(path)
+
+    feature_bytes = count * n_features * 4
+    label_bytes = count * 4
+    <<features_bin::binary-size(feature_bytes), labels_bin::binary-size(label_bytes)>> = payload
+
+    {features_bin, labels_bin, count, n_features}
   end
 
   defp validate_size(%{total_neurons: total_neurons} = model) when total_neurons <= 512, do: model

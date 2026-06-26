@@ -2,10 +2,7 @@ require PolyHok
 
 defmodule MLPClassifierHost do
   @moduledoc """
-  Codigo host da implementacao PolyHok.
-
-  Este modulo prepara dados, aloca buffers GPU e dispara os kernels definidos em
-  `MLPClassifierDevice`. A API usada pelo benchmark fica em `Model`.
+  Código Host da implementação PolyHok.
   """
 
   def to_gpu_model_state(%{layers: layers, weights: weights, biases: biases}) do
@@ -161,9 +158,7 @@ defmodule MLPClassifierHost do
         ]
       )
 
-      # Mesmo motivo do treino: o kernel de predicao e assincrono. Sincronizamos antes
-      # de fechar o timer para que predict_gpu_compute meça o compute real, e o
-      # get_gnx seguinte (predict_gpu_cpu_transfer) meça apenas a transferencia D2H.
+      # O kernel de predição é assíncrono, esperamos.
       PolyHok.synchronize()
     end)
 
@@ -189,8 +184,7 @@ defmodule MLPClassifierHost do
         [state.gpu_grad_w, state.total_weights, state.gpu_grad_b, state.total_biases]
       )
 
-      # Treina o batch: um bloco por amostra; threads cooperam sobre os neuronios
-      # (act/delta ficam em shared memory por bloco).
+      # Treina o batch: um bloco por amostra:
       PolyHok.spawn_st(
         &MLPClassifierDevice.train_batch_kernel/13,
         {batch_count, 1, 1},
@@ -212,7 +206,7 @@ defmodule MLPClassifierHost do
         ]
       )
 
-      # Atualiza pesos e biases num unico lancamento:
+      # Atualiza pesos e biases num único lançamento:
       PolyHok.spawn_st(
         &MLPClassifierDevice.apply_update_two_kernel/8,
         {grad_blocks, 1, 1},
@@ -229,12 +223,7 @@ defmodule MLPClassifierHost do
         ]
       )
 
-      # PolyHok.spawn_st lanca os kernels de forma assincrona e retorna na hora. Sem
-      # sincronizar, este timer mediria apenas o overhead de launch, e o tempo real de
-      # GPU vazaria para o cpu_gpu_transfer/batch_loading do batch seguinte (que so
-      # bloqueiam ao tocar a GPU). Fechamos a operacao aqui com cudaDeviceSynchronize
-      # (via API publica do PolyHok, sem alterar a dependencia) para que train_gpu_compute
-      # reflita o trabalho de treino efetivamente entregue, simetrico ao NIF CUDA.
+      # O kernel de treino é assíncrono, esperamos.
       PolyHok.synchronize()
     end)
 

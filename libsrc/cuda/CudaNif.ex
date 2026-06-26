@@ -1,8 +1,6 @@
 defmodule CudaNif do
   @moduledoc """
-  Wrapper Elixir para o NIF Erlang que executa o MLP em CUDA.
-
-  O fluxo aqui e: Elixir -> Erlang NIF -> C++/CUDA.
+  Wrapper Elixir para o NIF Erlang que executa o MLP em CUDA. Elixir -> Erlang NIF -> C++/CUDA.
   """
 
   @on_load :load_nif

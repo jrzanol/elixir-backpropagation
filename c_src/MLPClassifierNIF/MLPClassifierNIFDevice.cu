@@ -25,12 +25,6 @@ __global__ void KernelUpdateWeights(float* weights, float* biases,
         biases[tid] -= scl * gradB[tid];
 }
 
-// Uma amostra por BLOCO; as threads do bloco cooperam sobre os neuronios de cada
-// camada. act/delta vivem em shared memory (uma copia por bloco, indexada por
-// m_NeuronOffset), nao em arrays por thread. Com indexacao dinamica, aqueles arrays
-// estouravam os registradores e iam para memoria local (DRAM), tornando o kernel
-// limitado por latencia de memoria. Em shared memory ficam on-chip, e distribuir as
-// amostras em blocos (em vez de 1 thread cada) melhora a ocupacao da GPU.
 __global__ void KernelFit(MLPLayer layer,
                           const float* batchX,
                           const float* batchY,
@@ -181,9 +175,8 @@ void LaunchFitKernel(const MLPLayer& layer,
                      float* gradW,
                      float* gradB)
 {
-    // Um bloco por amostra; shared memory para act + delta (2 * total de neuronios).
     const int grid = batchCount;
-    const size_t sharedBytes = sizeof(float) * 2 * (size_t)layer.m_TotalNeurons;
+    const size_t sharedBytes = sizeof(float) * 2 * (size_t)layer.m_TotalNeurons; // act + delta (2 * total de neuronios).
     KernelFit<<<grid, CUDA_BLOCK_SIZE, sharedBytes>>>(
         layer, batchX, batchY, batchCount, gradW, gradB);
 }
@@ -193,9 +186,8 @@ void LaunchPredictKernel(const MLPLayer& layer,
                          float* results,
                          int batchCount)
 {
-    // Um bloco por amostra; shared memory para act (total de neuronios).
     const int grid = batchCount;
-    const size_t sharedBytes = sizeof(float) * (size_t)layer.m_TotalNeurons;
+    const size_t sharedBytes = sizeof(float) * (size_t)layer.m_TotalNeurons; // act (total de neuronios)
     KernelPredict<<<grid, CUDA_BLOCK_SIZE, sharedBytes>>>(
         layer, batchX, results, batchCount);
 }
