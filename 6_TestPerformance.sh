@@ -5,7 +5,7 @@ trap 'echo "[ERRO] 6_TestPerformance.sh falhou na linha $LINENO." >&2' ERR
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATASET="$PROJECT_ROOT/scripts/prepared_dataset"
 RESULT_DIR="$PROJECT_ROOT/reports/performance_$(date +%Y%m%d_%H%M%S)"
-RUNS="${BACKPROP_PERFORMANCE_RUNS:-11}"
+RUNS="${BACKPROP_PERFORMANCE_RUNS:-101}"
 IMPLEMENTATIONS="${BACKPROP_PERFORMANCE_IMPLS:-cuda polyhok}"
 IMPLEMENTATIONS="${IMPLEMENTATIONS//,/ }"
 read -r -a IMPLEMENTATION_LIST <<< "$IMPLEMENTATIONS"
@@ -25,8 +25,8 @@ if ! [[ "$RUNS" =~ ^[1-9][0-9]*$ ]]; then
   echo "ERRO: BACKPROP_PERFORMANCE_RUNS invalido: $RUNS" >&2
   exit 1
 fi
-if [ "$RUNS" -lt 11 ] && [ "${BACKPROP_PERFORMANCE_SMOKE:-0}" != "1" ]; then
-  echo "ERRO: o benchmark exige ao menos 11 execucoes: 1 aquecimento e 10 amostras." >&2
+if [ "$RUNS" -lt 101 ] && [ "${BACKPROP_PERFORMANCE_SMOKE:-0}" != "1" ]; then
+  echo "ERRO: o benchmark exige ao menos 101 execucoes: 1 aquecimento e 100 amostras." >&2
   exit 1
 fi
 if [ "${#IMPLEMENTATION_LIST[@]}" -eq 0 ]; then
