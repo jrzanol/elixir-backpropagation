@@ -88,17 +88,27 @@ for implementation in "${IMPLEMENTATION_LIST[@]}"; do
 
     profile_file="$RESULT_DIR/$implementation/profile_$run.csv"
     run_log="$RESULT_DIR/$implementation/run_$run.log"
-    application_started="$(date +%s%N)"
-    BACKPROP_IMPL="$implementation" MIX_BUILD_PATH="$build_path" \
-      BACKPROP_PROFILE_FILE="$profile_file" \
-      mix run -e 'Main.run()' > "$run_log" 2>&1
-    application_finished="$(date +%s%N)"
+    max_attempts="${BACKPROP_PERFORMANCE_MAX_ATTEMPTS:-3}"
+    attempt=1
+    while true; do
+      rm -f "$profile_file"
+      application_started="$(date +%s%N)"
+      if BACKPROP_IMPL="$implementation" MIX_BUILD_PATH="$build_path" \
+           BACKPROP_PROFILE_FILE="$profile_file" \
+           mix run -e 'Main.run()' > "$run_log" 2>&1 && [ -s "$profile_file" ]; then
+        application_finished="$(date +%s%N)"
+        break
+      fi
+      if [ "$attempt" -ge "$max_attempts" ]; then
+        echo "ERRO: $implementation execucao $run falhou apos $max_attempts tentativas. Log: $run_log" >&2
+        exit 1
+      fi
+      echo "[AVISO] $implementation execucao $run falhou (tentativa $attempt/$max_attempts). Log preservado; repetindo..." >&2
+      cp "$run_log" "$RESULT_DIR/$implementation/run_${run}_falha_$attempt.log"
+      attempt=$((attempt + 1))
+      sleep 10
+    done
     application_us=$(( (application_finished - application_started) / 1000 ))
-
-    if [ ! -s "$profile_file" ]; then
-      echo "ERRO: perfil nao gerado em $profile_file" >&2
-      exit 1
-    fi
 
     echo "$implementation,$run,$warmup,$compile_us,$application_us,$profile_file" >> "$RAW"
   done
