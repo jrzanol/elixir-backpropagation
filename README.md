@@ -1,14 +1,13 @@
-# Backpropagation em GPU: CUDA/NIF e PolyHok
+# Backpropagation em GPU: CUDA/NIF e a DSL PolyHok
 
-Implementacao e comparacao do treinamento de uma MLP em GPU usando CUDA/NIF e a DSL PolyHok.
+Implementação e Avaliação de Desempenho do Algoritmo Backpropagation em GPU: Um Estudo Comparativo entre CUDA e a DSL PolyHok
 
 ## Requisitos
 
 - Ubuntu ou WSL2
 - GPU NVIDIA, driver e CUDA Toolkit (`nvcc`)
-- Credenciais Kaggle em `.kaggle/kaggle.json` ou `~/.kaggle/kaggle.json`
 
-## Preparacao
+## Preparação
 
 ```bash
 chmod +x ./*.sh
@@ -29,7 +28,7 @@ gunzip HIGGS.csv.gz
 
 Topologia utilizada com o HIGGS: `[28, 256, 128, 1]`.
 
-## Compilacao e execucao
+## Compilação e execução
 
 ```bash
 ./1_CompileCUDA.sh
