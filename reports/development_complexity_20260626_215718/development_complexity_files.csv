@@ -1,0 +1,11 @@
+implementation,file,language,total_lines,source_lines,blank_lines,comment_lines,code_characters,cyclomatic_approx,function_count,max_function_source_lines
+CUDA/NIF,c_src/MLPClassifierNIF/CudaBackpropNif.cpp,C++,331,267,64,0,8746,57,15,40
+CUDA/NIF,c_src/MLPClassifierNIF/MLPClassifierNIF.cu,CUDA,356,300,56,0,9814,68,11,76
+CUDA/NIF,c_src/MLPClassifierNIF/MLPClassifierNIF.h,C/C++ header,57,44,12,1,1061,1,0,0
+CUDA/NIF,c_src/MLPClassifierNIF/MLPClassifierNIFDevice.cu,CUDA,209,174,33,2,5616,26,9,95
+CUDA/NIF,c_src/MLPClassifierNIF/MLPClassifierNIFDevice.h,C/C++ header,11,7,4,0,513,1,0,0
+CUDA/NIF,libsrc/cuda/CudaNif.ex,Elixir,65,56,9,0,912,3,7,11
+CUDA/NIF,libsrc/cuda/Model.ex,Elixir,167,137,30,0,4192,18,18,26
+PolyHok,libsrc/polyhok/MLPClassifierDevice.ex,Elixir,258,219,39,0,4203,27,6,123
+PolyHok,libsrc/polyhok/MLPClassifierHost.ex,Elixir,307,260,41,6,6880,30,18,62
+PolyHok,libsrc/polyhok/Model.ex,Elixir,150,123,27,0,4091,16,20,23

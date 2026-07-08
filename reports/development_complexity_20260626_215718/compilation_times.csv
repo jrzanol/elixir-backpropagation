@@ -1,0 +1,11 @@
+implementation,run,microseconds,milliseconds,log
+cuda,1,8450975,8450,/workspace/reports/development_complexity_20260626_215718/compile_cuda_1.log
+cuda,2,8233916,8233,/workspace/reports/development_complexity_20260626_215718/compile_cuda_2.log
+cuda,3,8163011,8163,/workspace/reports/development_complexity_20260626_215718/compile_cuda_3.log
+cuda,4,8175360,8175,/workspace/reports/development_complexity_20260626_215718/compile_cuda_4.log
+cuda,5,7868847,7868,/workspace/reports/development_complexity_20260626_215718/compile_cuda_5.log
+polyhok,1,12788767,12788,/workspace/reports/development_complexity_20260626_215718/compile_polyhok_1.log
+polyhok,2,12670576,12670,/workspace/reports/development_complexity_20260626_215718/compile_polyhok_2.log
+polyhok,3,12770594,12770,/workspace/reports/development_complexity_20260626_215718/compile_polyhok_3.log
+polyhok,4,12676294,12676,/workspace/reports/development_complexity_20260626_215718/compile_polyhok_4.log
+polyhok,5,12512105,12512,/workspace/reports/development_complexity_20260626_215718/compile_polyhok_5.log

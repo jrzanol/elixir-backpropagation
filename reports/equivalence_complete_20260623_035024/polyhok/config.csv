@@ -1,0 +1,2 @@
+implementation,dataset,train_ratio,seed,batch_size,epochs,learning_rate,topology
+polyhok,/workspace/scripts/prepared_dataset,0.800000000000,42,32768,10,0.010000000000,"[28, 256, 128, 1]"

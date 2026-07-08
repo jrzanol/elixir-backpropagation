@@ -1,0 +1,17 @@
+implementation,type,name,file,argument_count
+CUDA/NIF,definition,KernelUpdateWeights,c_src/MLPClassifierNIF/MLPClassifierNIFDevice.cu,8
+CUDA/NIF,definition,KernelFit,c_src/MLPClassifierNIF/MLPClassifierNIFDevice.cu,6
+CUDA/NIF,definition,KernelPredict,c_src/MLPClassifierNIF/MLPClassifierNIFDevice.cu,4
+CUDA/NIF,launch,KernelFit,c_src/MLPClassifierNIF/MLPClassifierNIFDevice.cu,6
+CUDA/NIF,launch,KernelPredict,c_src/MLPClassifierNIF/MLPClassifierNIFDevice.cu,4
+CUDA/NIF,launch,KernelUpdateWeights,c_src/MLPClassifierNIF/MLPClassifierNIFDevice.cu,8
+PolyHok,defd,sigmoid,libsrc/polyhok/MLPClassifierDevice.ex,1
+PolyHok,defd,relu,libsrc/polyhok/MLPClassifierDevice.ex,1
+PolyHok,defk,zero_two_kernel,libsrc/polyhok/MLPClassifierDevice.ex,4
+PolyHok,defk,apply_update_two_kernel,libsrc/polyhok/MLPClassifierDevice.ex,8
+PolyHok,defk,train_batch_kernel,libsrc/polyhok/MLPClassifierDevice.ex,13
+PolyHok,defk,predict_batch_kernel,libsrc/polyhok/MLPClassifierDevice.ex,11
+PolyHok,spawn_st,spawn_st_1,libsrc/polyhok/MLPClassifierHost.ex,4
+PolyHok,spawn_st,spawn_st_2,libsrc/polyhok/MLPClassifierHost.ex,4
+PolyHok,spawn_st,spawn_st_3,libsrc/polyhok/MLPClassifierHost.ex,4
+PolyHok,spawn_st,spawn_st_4,libsrc/polyhok/MLPClassifierHost.ex,4

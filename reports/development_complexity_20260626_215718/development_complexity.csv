@@ -1,0 +1,32 @@
+criterion,type,cuda,polyhok,method
+Quantidade de arquivos,quantitativo,7,3,Arquivos especificos da implementacao.
+Linguagens utilizadas,quantitativo,"C++: 1, C/C++ header: 2, CUDA: 2, Elixir: 2",Elixir: 3,Classificacao pela extensao dos arquivos.
+Linhas fisicas,quantitativo,1196,715,Todas as linhas dos arquivos especificos.
+Linhas de codigo,quantitativo,985,602,"Linhas nao vazias, excluindo linhas somente de comentario."
+Caracteres de codigo,quantitativo,30854,15174,Soma dos caracteres em linhas de codigo.
+Complexidade ciclomatica aproximada,quantitativo,174,73,Contagem heuristica de decisoes sintaticas.
+Funcoes/kernels,quantitativo,60,44,"Extracao heuristica de funcoes, kernels e funcoes DSL."
+Tamanho medio de funcao,quantitativo,15.62,15.86,Media de linhas por funcao/kernel.
+Maior funcao/kernel,quantitativo,95,123,Maior bloco funcional detectado.
+Media de argumentos por funcao,quantitativo,2.48,2.05,Media de parametros por funcao/kernel.
+Maior assinatura de funcao,quantitativo,8,8,Maior numero de argumentos detectado.
+Kernels declarados,quantitativo,3,4,CUDA __global__ vs PolyHok defk.
+Lancamentos GPU,quantitativo,3,4,CUDA <<<...>>> vs PolyHok.spawn_st.
+Argumentos medios de kernel/lancamento,quantitativo,6.00,5.40,Assinaturas e chamadas de kernel.
+Maior kernel/lancamento,quantitativo,8,13,Maior quantidade de argumentos em definicao/chamada.
+Gerenciamento de memoria GPU,quantitativo,29,17,cudaMalloc/cudaFree/cudaMemcpy/cudaMemset vs PolyHok.new_gnx.
+Transferencias CPU/GPU,quantitativo,7,2,cudaMemcpy vs PolyHok.get_gnx; new_gnx e considerado em memoria.
+Sincronizacoes explicitas,quantitativo,2,2,cudaDeviceSynchronize vs PolyHok.synchronize.
+Checks de erro/assincronia,quantitativo,15,n/a,cudaGetLastError/CudaOk; PolyHok encapsula parte desses checks.
+Observabilidade,quantitativo,38,15,"Snapshots, timers, prints e checks de erro."
+Controlabilidade da implementacao,quantitativo,7,6,Variaveis de ambiente e knobs BACKPROP_* no codigo especifico.
+Controlabilidade do projeto,quantitativo,39,39,"Parametros compartilhados de seed, dataset, epochs, batch size e debug."
+Tempo medio de compilacao,quantitativo,8178.422 ms,12683.667 ms,Media de execucoes repetidas dos scripts oficiais.
+Tempo mediano de compilacao,quantitativo,8175.360 ms,12676.294 ms,Mediana de execucoes repetidas dos scripts oficiais.
+Desvio da compilacao,quantitativo,208.236 ms,109.843 ms,Desvio padrao amostral das compilacoes.
+Churn - commits,quantitativo,0,0,Historico git nos arquivos especificos.
+Churn - linhas adicionadas,quantitativo,0,0,Soma de insercoes em git log --numstat.
+Churn - linhas removidas,quantitativo,0,0,Soma de remocoes em git log --numstat.
+Necessidade de codigo C/CUDA,qualitativo,Obrigatoria: 3 kernels CUDA e 6 funcoes NIF exportadas.,Nao no codigo da aplicacao: kernels ficam em Elixir/DSL; C/CUDA permanece na dependencia PolyHok.,Inspecao de linguagens e fronteiras.
+Superficie de modificacao de kernel,qualitativo,"Maior: envolve kernel CUDA, wrapper/launcher, header, C++ NIF e modulo Elixir.","Menor: kernel e chamada ficam em Elixir/DSL, mas ainda dependem de tipos estaticos e recompilacao.","Numero de linguagens, arquivos e fronteiras que precisam permanecer coerentes."
+Restricoes estaticas PolyHok,qualitativo,Nao se aplica diretamente; CUDA ainda compila para arquitetura alvo.,"6 deft, 3 buffers fixos de 512 e tipos aceitos pela DSL.","Inspecao de deft/defk, arrays fixos e logs de arquitetura."

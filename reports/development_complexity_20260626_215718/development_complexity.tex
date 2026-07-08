@@ -1,0 +1,37 @@
+\begin{tabular}{p{0.20\textwidth}p{0.35\textwidth}p{0.35\textwidth}}
+\hline
+Criterio & CUDA/NIF & PolyHok \\
+\hline
+Quantidade de arquivos & 7 & 3 \\
+Linguagens utilizadas & C++: 1, C/C++ header: 2, CUDA: 2, Elixir: 2 & Elixir: 3 \\
+Linhas fisicas & 1196 & 715 \\
+Linhas de codigo & 985 & 602 \\
+Caracteres de codigo & 30854 & 15174 \\
+Complexidade ciclomatica aproximada & 174 & 73 \\
+Funcoes/kernels & 60 & 44 \\
+Tamanho medio de funcao & 15.62 & 15.86 \\
+Maior funcao/kernel & 95 & 123 \\
+Media de argumentos por funcao & 2.48 & 2.05 \\
+Maior assinatura de funcao & 8 & 8 \\
+Kernels declarados & 3 & 4 \\
+Lancamentos GPU & 3 & 4 \\
+Argumentos medios de kernel/lancamento & 6.00 & 5.40 \\
+Maior kernel/lancamento & 8 & 13 \\
+Gerenciamento de memoria GPU & 29 & 17 \\
+Transferencias CPU/GPU & 7 & 2 \\
+Sincronizacoes explicitas & 2 & 2 \\
+Checks de erro/assincronia & 15 & n/a \\
+Observabilidade & 38 & 15 \\
+Controlabilidade da implementacao & 7 & 6 \\
+Controlabilidade do projeto & 39 & 39 \\
+Tempo medio de compilacao & 8178.422 ms & 12683.667 ms \\
+Tempo mediano de compilacao & 8175.360 ms & 12676.294 ms \\
+Desvio da compilacao & 208.236 ms & 109.843 ms \\
+Churn - commits & 0 & 0 \\
+Churn - linhas adicionadas & 0 & 0 \\
+Churn - linhas removidas & 0 & 0 \\
+Necessidade de codigo C/CUDA & Obrigatoria: 3 kernels CUDA e 6 funcoes NIF exportadas. & Nao no codigo da aplicacao: kernels ficam em Elixir/DSL; C/CUDA permanece na dependencia PolyHok. \\
+Superficie de modificacao de kernel & Maior: envolve kernel CUDA, wrapper/launcher, header, C++ NIF e modulo Elixir. & Menor: kernel e chamada ficam em Elixir/DSL, mas ainda dependem de tipos estaticos e recompilacao. \\
+Restricoes estaticas PolyHok & Nao se aplica diretamente; CUDA ainda compila para arquitetura alvo. & 6 deft, 3 buffers fixos de 512 e tipos aceitos pela DSL. \\
+\hline
+\end{tabular}

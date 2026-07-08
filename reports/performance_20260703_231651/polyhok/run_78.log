@@ -1,0 +1,851 @@
+==> poly_hok
+     warning: the following pattern will never match:
+
+         ref =
+           case type do
+             {:f, 32} ->
+               create_gpu_array_nx_nif(array, l, c, List.Chars.to_charlist("float"))
+         
+             {:f, 64} ->
+               create_gpu_array_nx_nif(array, l, c, List.Chars.to_charlist("double"))
+         
+             {:s, 32} ->
+               create_gpu_array_nx_nif(array, l, c, List.Chars.to_charlist("int"))
+         
+             x ->
+               raise RuntimeError.exception(
+                       <<"new_gnx: type ", String.Chars.to_string(x)::binary, " not suported">>
+                     )
+           end
+
+     because the right-hand side has type:
+
+         none()
+
+     where "array" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:266:36
+         %Nx.BinaryBackend{state: array} = data
+
+     where "c" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:269:9
+         {l, c} =
+           case shape do
+             {c} -> {1, c}
+             {l, c} -> {l, c}
+             {l1, l2, c} -> {l1 * l2, c}
+           end
+
+     where "l" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:269:9
+         {l, c} =
+           case shape do
+             {c} -> {1, c}
+             {l, c} -> {l, c}
+             {l1, l2, c} -> {l1 * l2, c}
+           end
+
+     where "type" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:265:13
+         %Nx.Tensor{data: data, type: type, shape: shape, names: name}
+
+     where "x" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:278:6
+         x
+
+     typing violation found at:
+     │
+ 274 │   ref  = case type do
+     │        ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:274:8: PolyHok.new_gnx/1
+
+     warning: the following pattern will never match:
+
+         ref = create_gpu_array_nx_nif(z, l, c, List.Chars.to_charlist("float"))
+
+     because the right-hand side has type:
+
+         none()
+
+     where "c" was given the type:
+
+         # type: integer()
+         # from: lib/poly_hok.ex:284:38
+         <<..., c::integer-little-unsigned-size(32), ...>>
+
+     where "l" was given the type:
+
+         # type: integer()
+         # from: lib/poly_hok.ex:284:8
+         <<l::integer-little-unsigned-size(32), ...>>
+
+     where "z" was given the type:
+
+         # type: binary()
+         # from: lib/poly_hok.ex:284:68
+         <<..., z::binary>>
+
+     typing violation found at:
+     │
+ 285 │     ref = create_gpu_array_nx_nif(z,l,c,Kernel.to_charlist("float"))
+     │         ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:285:9: PolyHok.new_gnx/1
+
+     warning: the following pattern will never match:
+
+         ref =
+           case type do
+             {:f, 32} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("float"))
+         
+             {:f, 64} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("double"))
+         
+             {:s, 32} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("int"))
+         
+             x ->
+               raise RuntimeError.exception(
+                       <<"new_gnx: type ", String.Chars.to_string(x)::binary, " not suported">>
+                     )
+           end
+
+     because the right-hand side has type:
+
+         none()
+
+     where "c" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:288:15
+         c
+
+     where "l" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:288:13
+         l
+
+     where "type" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:288:17
+         type
+
+     where "x" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:294:5
+         x
+
+     typing violation found at:
+     │
+ 290 │   ref = case type do
+     │       ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:290:7: PolyHok.new_gnx/3
+
+     warning: the following pattern will never match:
+
+         ref =
+           case type do
+             {:f, 32} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("float"))
+         
+             {:f, 64} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("double"))
+         
+             {:s, 32} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("int"))
+         
+             x ->
+               raise RuntimeError.exception(
+                       <<"new_gnx: type ", String.Chars.to_string(x)::binary, " not suported">>
+                     )
+           end
+
+     because the right-hand side has type:
+
+         none()
+
+     where "c" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:299:13
+         {c}
+
+     where "l" was given the type:
+
+         # type: integer()
+         # from: lib/poly_hok.ex:300:5
+         l = 1
+
+     where "type" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:299:17
+         type
+
+     where "x" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:306:6
+         x
+
+     typing violation found at:
+     │
+ 302 │    ref = case type do
+     │        ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:302:8: PolyHok.new_gnx/2
+
+     warning: the following pattern will never match:
+
+         ref =
+           case type do
+             {:f, 32} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("float"))
+         
+             {:f, 64} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("double"))
+         
+             {:s, 32} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("int"))
+         
+             x ->
+               raise RuntimeError.exception(
+                       <<"new_gnx: type ", String.Chars.to_string(x)::binary, " not suported">>
+                     )
+           end
+
+     because the right-hand side has type:
+
+         none()
+
+     where "c" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex
+         {l, c}
+
+     where "l" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex
+         {l, c}
+
+     where "type" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:311:19
+         type
+
+     where "x" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:317:6
+         x
+
+     typing violation found at:
+     │
+ 313 │    ref = case type do
+     │        ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:313:8: PolyHok.new_gnx/2
+
+     warning: the following pattern will never match:
+
+         ref =
+           case type do
+             {:f, 32} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("float"))
+         
+             {:f, 64} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("double"))
+         
+             {:s, 32} ->
+               new_gpu_array_nif(l, c, List.Chars.to_charlist("int"))
+         
+             x ->
+               raise RuntimeError.exception(
+                       <<"new_gnx: type ", String.Chars.to_string(x)::binary, " not suported">>
+                     )
+           end
+
+     because the right-hand side has type:
+
+         none()
+
+     where "c" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:323:9
+         {l, c} = {d1 * d2, d3}
+
+     where "l" was given the type:
+
+         # type: dynamic(float() or integer())
+         # from: lib/poly_hok.ex:323:9
+         {l, c} = {d1 * d2, d3}
+
+     where "type" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:322:25
+         type
+
+     where "x" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:328:5
+         x
+
+     typing violation found at:
+     │
+ 324 │   ref = case type do
+     │       ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:324:7: PolyHok.new_gnx/2
+
+     warning: the following pattern will never match:
+
+         bin = get_gpu_array_nif(ref, rows, columns, List.Chars.to_charlist("float"))
+
+     because the right-hand side has type:
+
+         none()
+
+     where "columns" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:334:13
+         {:matrex, ref, {rows, columns}}
+
+     where "ref" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:334:13
+         {:matrex, ref, {rows, columns}}
+
+     where "rows" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:334:13
+         {:matrex, ref, {rows, columns}}
+
+     typing violation found at:
+     │
+ 335 │   bin = get_gpu_array_nif(ref,rows,columns,Kernel.to_charlist("float"))
+     │       ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:335:7: PolyHok.get_gnx/1
+
+     warning: the following pattern will never match:
+
+         ref =
+           case type do
+             {:f, 32} ->
+               get_gpu_array_nif(ref, l, c, List.Chars.to_charlist("float"))
+         
+             {:f, 64} ->
+               get_gpu_array_nif(ref, l, c, List.Chars.to_charlist("double"))
+         
+             {:s, 32} ->
+               get_gpu_array_nif(ref, l, c, List.Chars.to_charlist("int"))
+         
+             x ->
+               raise RuntimeError.exception(
+                       <<"new_gnx: type ", String.Chars.to_string(x)::binary, " not suported">>
+                     )
+           end
+
+     because the right-hand side has type:
+
+         none()
+
+     where "c" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:341:9
+         {l, c} =
+           case shape do
+             {c} -> {1, c}
+             {l, c} -> {l, c}
+             {d1, d2, d3} -> {d1 * d2, d3}
+           end
+
+     where "l" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:341:9
+         {l, c} =
+           case shape do
+             {c} -> {1, c}
+             {l, c} -> {l, c}
+             {d1, d2, d3} -> {d1 * d2, d3}
+           end
+
+     where "ref" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:339:13
+         {:nx, type, shape, name, ref}
+
+     where "type" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:339:13
+         {:nx, type, shape, name, ref}
+
+     where "x" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:350:5
+         x
+
+     typing violation found at:
+     │
+ 346 │   ref = case type do
+     │       ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:346:7: PolyHok.get_gnx/1
+
+     warning: the following pattern will never match:
+
+         ref =
+           case type do
+             {:f, 32} ->
+               create_nx_ref_nif(array, l, c, List.Chars.to_charlist("float"))
+         
+             {:f, 64} ->
+               create_nx_ref_nif(array, l, c, List.Chars.to_charlist("double"))
+         
+             {:s, 32} ->
+               create_nx_ref_nif(array, l, c, List.Chars.to_charlist("int"))
+         
+             x ->
+               raise RuntimeError.exception(
+                       <<"new_gmatrex: type ", String.Chars.to_string(x)::binary, " not suported">>
+                     )
+           end
+
+     because the right-hand side has type:
+
+         none()
+
+     where "array" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:485:36
+         %Nx.BinaryBackend{state: array} = data
+
+     where "c" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:488:9
+         {l, c} =
+           case shape do
+             {c} -> {1, c}
+             {l, c} -> {l, c}
+           end
+
+     where "l" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:488:9
+         {l, c} =
+           case shape do
+             {c} -> {1, c}
+             {l, c} -> {l, c}
+           end
+
+     where "type" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:484:15
+         %Nx.Tensor{data: data, type: type, shape: shape, names: name}
+
+     where "x" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:496:6
+         x
+
+     typing violation found at:
+     │
+ 492 │   ref = case type do
+     │       ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:492:7: PolyHok.new_gnx_/1
+
+     warning: the following pattern will never match:
+
+         ref =
+           case type do
+             {:f, 32} ->
+               new_gpu_nx_nif(l, c, List.Chars.to_charlist("float"))
+         
+             {:f, 64} ->
+               new_gpu_nx_nif(l, c, List.Chars.to_charlist("double"))
+         
+             {:s, 32} ->
+               new_gpu_nx_nif(l, c, List.Chars.to_charlist("int"))
+         
+             x ->
+               raise RuntimeError.exception(
+                       <<"new_gmatrex: type ", String.Chars.to_string(x)::binary, " not suported">>
+                     )
+           end
+
+     because the right-hand side has type:
+
+         none()
+
+     where "c" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:500:16
+         c
+
+     where "l" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:500:14
+         l
+
+     where "type" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:500:18
+         type
+
+     where "x" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:506:5
+         x
+
+     typing violation found at:
+     │
+ 502 │   ref = case type do
+     │       ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:502:7: PolyHok.new_gnx_/3
+
+     warning: the following pattern will never match:
+
+         ref =
+           case type do
+             {:f, 32} ->
+               get_nx_nif(ref, l, c, List.Chars.to_charlist("float"))
+         
+             {:f, 64} ->
+               get_nx_nif(ref, l, c, List.Chars.to_charlist("double"))
+         
+             {:s, 32} ->
+               get_nx_nif(ref, l, c, List.Chars.to_charlist("int"))
+         
+             x ->
+               raise RuntimeError.exception(
+                       <<"new_gnx: type ", String.Chars.to_string(x)::binary, " not suported">>
+                     )
+           end
+
+     because the right-hand side has type:
+
+         none()
+
+     where "c" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:513:9
+         {l, c} = shape
+
+     where "l" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:513:9
+         {l, c} = shape
+
+     where "ref" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:512:14
+         {:nx, type, shape, name, ref}
+
+     where "type" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:512:14
+         {:nx, type, shape, name, ref}
+
+     where "x" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:518:5
+         x
+
+     typing violation found at:
+     │
+ 514 │   ref = case type do
+     │       ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:514:7: PolyHok.get_gnx_/1
+
+     warning: the following pattern will never match:
+
+         ref = create_ref_nif(matrix)
+
+     because the right-hand side has type:
+
+         none()
+
+     where "matrix" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:554:39
+         %Matrex{data: matrix} = a
+
+     typing violation found at:
+     │
+ 555 │   ref=create_ref_nif(matrix)
+     │      ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:555:6: PolyHok.new_gmatrex/1
+
+     warning: the following pattern will never match:
+
+         ref =
+           case type do
+             {:f, 32} ->
+               create_nx_ref_nif(array, l, c, List.Chars.to_charlist("float"))
+         
+             {:f, 64} ->
+               create_nx_ref_nif(array, l, c, List.Chars.to_charlist("double"))
+         
+             {:s, 32} ->
+               create_nx_ref_nif(array, l, c, List.Chars.to_charlist("int"))
+         
+             x ->
+               raise RuntimeError.exception(
+                       <<"new_gmatrex: type ", String.Chars.to_string(x)::binary, " not suported">>
+                     )
+           end
+
+     because the right-hand side has type:
+
+         none()
+
+     where "array" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:560:36
+         %Nx.BinaryBackend{state: array} = data
+
+     where "c" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:561:9
+         {l, c} = shape
+
+     where "l" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:561:9
+         {l, c} = shape
+
+     where "type" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:559:18
+         %Nx.Tensor{data: data, type: type, shape: shape, names: name}
+
+     where "x" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:566:6
+         x
+
+     typing violation found at:
+     │
+ 562 │   ref = case type do
+     │       ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:562:7: PolyHok.new_gmatrex/1
+
+     warning: the following pattern will never match:
+
+         ref = new_gmatrex_pinned_nif(array)
+
+     because the right-hand side has type:
+
+         none()
+
+     where "array" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex
+         {array, {l, c}}
+
+     typing violation found at:
+     │
+ 571 │   ref=new_gmatrex_pinned_nif(array)
+     │      ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:571:6: PolyHok.new_gmatrex/1
+
+     warning: the following pattern will never match:
+
+         ref = new_ref_nif(c)
+
+     because the right-hand side has type:
+
+         none()
+
+     where "c" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:575:19
+         c
+
+     typing violation found at:
+     │
+ 576 │   ref=new_ref_nif(c)
+     │      ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:576:6: PolyHok.new_gmatrex/2
+
+     warning: the following pattern will never match:
+
+         ref = new_ref_nif(size)
+
+     because the right-hand side has type:
+
+         none()
+
+     where "size" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:591:13
+         size
+
+     typing violation found at:
+     │
+ 592 │ ref=new_ref_nif(size)
+     │    ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:592:4: PolyHok.new_ref/1
+
+     warning: the following pattern will never match:
+
+         pk = load(k)
+
+     because the right-hand side has type:
+
+         none()
+
+     where "k" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:923:14
+         {:func, k, type}
+
+     typing violation found at:
+     │
+ 939 │     pk=load(k)
+     │       ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:939:7: PolyHok.spawn_st/4
+
+     warning: the following pattern will never match:
+
+         pk = load(k)
+
+     because the right-hand side has type:
+
+         none()
+
+     where "k" was given the type:
+
+         # type: dynamic()
+         # from: lib/poly_hok.ex:944:14
+         k
+
+     typing violation found at:
+     │
+ 959 │     pk=load(k)
+     │       ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok.ex:959:7: PolyHok.spawn_st/4
+
+     warning: the following pattern will never match:
+
+         r =
+           PolyHok.load_kernel_nif(
+             List.Chars.to_charlist("Elixir.App"),
+             List.Chars.to_charlist(<<String.Chars.to_string(fname)::binary>>)
+           )
+
+     because the right-hand side has type:
+
+         none()
+
+     where "fname" was given the type:
+
+         # type: binary()
+         # from: lib/poly_hok/JIT.ex:534:9
+         fname = <<"ker_", PolyHok.CudaBackend.gen_lambda_name()::binary>>
+
+     typing violation found at:
+     │
+ 558 │     r = PolyHok.load_kernel_nif(to_charlist("Elixir.App"),to_charlist("#{fname}"))
+     │       ~
+     │
+     └─ (poly_hok 0.1.0) lib/poly_hok/JIT.ex:558:7: JIT.gen_jit_kernel_load/3
+
+Carregando dataset preparado...
+Amostras: 11000000, Features: 28
+Treino: 8803090, Teste: 2196910
+Batch size: 32768
+Batches treino: 269, teste: 68
+Topologia: [28, 256, 128, 1]
+
+Treinando 100 epochs com lr=0.01...
+Epoch 100/100 concluida
+
+--- Resultados finais ---
+Acuracia (treino) : 62.77%
+Acuracia (teste)  : 62.75%
+Precisao : 0.6284
+Recall   : 0.7261
+F1-Score : 0.6737
+Matriz:
+  Real 0: TN=533474  FP=499646
+  Real 1: FN=318782  TP=845008
+Tempo treino: 708.220s
+
+--- Tempos internos do backpropagation ---
+Preparacao do dataset: count=1 total=3.628 ms avg=3.628 ms min=3.628 ms max=3.628 ms
+Materializacao dos batches: count=1 total=1.816 ms avg=1.816 ms min=1.816 ms max=1.816 ms
+Inicializacao do modelo: count=1 total=431.308 ms avg=431.308 ms min=431.308 ms max=431.308 ms
+Leitura de batch de treino: count=26900 total=76930.495 ms avg=2.86 ms min=1.306 ms max=128.115 ms
+Treino por epoca: count=100 total=708218.794 ms avg=7082.188 ms min=7006.202 ms max=7431.395 ms
+Treino por batch: count=26900 total=706949.773 ms avg=26.281 ms min=15.232 ms max=278.029 ms
+Transferencia CPU/GPU no treino: count=26900 total=32289.462 ms avg=1.2 ms min=0.797 ms max=126.804 ms
+Processamento GPU no treino: count=26900 total=674361.267 ms avg=25.069 ms min=14.419 ms max=157.627 ms
+Leitura de batch de predicao: count=337 total=4372.966 ms avg=12.976 ms min=2.037 ms max=31.547 ms
+Predicao por batch: count=337 total=6446.723 ms avg=19.13 ms min=8.755 ms max=40.571 ms
+Transferencia CPU/GPU na predicao: count=337 total=495.942 ms avg=1.472 ms min=0.161 ms max=11.771 ms
+Processamento GPU na predicao: count=337 total=1778.198 ms avg=5.277 ms min=1.187 ms max=11.833 ms
+Transferencia GPU/CPU na predicao: count=337 total=4165.953 ms avg=12.362 ms min=4.675 ms max=33.079 ms

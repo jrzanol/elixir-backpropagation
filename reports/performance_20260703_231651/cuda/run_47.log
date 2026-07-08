@@ -1,0 +1,35 @@
+Carregando dataset preparado...
+Amostras: 11000000, Features: 28
+Treino: 8803090, Teste: 2196910
+Batch size: 32768
+Batches treino: 269, teste: 68
+Topologia: [28, 256, 128, 1]
+
+Treinando 100 epochs com lr=0.01...
+Epoch 100/100 concluida
+
+--- Resultados finais ---
+Acuracia (treino) : 62.77%
+Acuracia (teste)  : 62.75%
+Precisao : 0.6284
+Recall   : 0.7261
+F1-Score : 0.6737
+Matriz:
+  Real 0: TN=533470  FP=499650
+  Real 1: FN=318784  TP=845006
+Tempo treino: 654.330s
+
+--- Tempos internos do backpropagation ---
+Preparacao do dataset: count=1 total=2.868 ms avg=2.868 ms min=2.868 ms max=2.868 ms
+Materializacao dos batches: count=1 total=1.388 ms avg=1.388 ms min=1.388 ms max=1.388 ms
+Inicializacao do modelo: count=1 total=367.388 ms avg=367.388 ms min=367.388 ms max=367.388 ms
+Leitura de batch de treino: count=26900 total=45036.978 ms avg=1.674 ms min=0.867 ms max=8.203 ms
+Treino por epoca: count=100 total=654328.771 ms avg=6543.288 ms min=6517.444 ms max=6604.439 ms
+Treino por batch: count=26900 total=652540.179 ms avg=24.258 ms min=15.563 ms max=28.203 ms
+Transferencia CPU/GPU no treino: count=26900 total=21347.197 ms avg=0.794 ms min=0.496 ms max=3.582 ms
+Processamento GPU no treino: count=26900 total=628580.315 ms avg=23.367 ms min=14.935 ms max=25.141 ms
+Leitura de batch de predicao: count=337 total=3024.647 ms avg=8.975 ms min=1.138 ms max=16.28 ms
+Predicao por batch: count=337 total=2163.697 ms avg=6.42 ms min=0.493 ms max=15.432 ms
+Transferencia CPU/GPU na predicao: count=337 total=280.711 ms avg=0.833 ms min=0.075 ms max=3.083 ms
+Processamento GPU na predicao: count=337 total=1103.405 ms avg=3.274 ms min=0.184 ms max=3.454 ms
+Transferencia GPU/CPU na predicao: count=337 total=101.945 ms avg=0.303 ms min=0.022 ms max=0.44 ms
