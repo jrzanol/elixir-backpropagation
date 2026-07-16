@@ -10,6 +10,9 @@ Implementação e Avaliação de Desempenho do Algoritmo Backpropagation em GPU:
 ## Preparação
 
 ```bash
+git clone https://github.com/jrzanol/elixir-backpropagation.git
+cd elixir-backpropagation
+
 chmod +x ./*.sh
 ./0_InstallDeps.sh
 ./0_InstallPyTorch.sh
@@ -20,8 +23,8 @@ chmod +x ./*.sh
 ```bash
 ./0_DownloadDataset.sh https://archive.ics.uci.edu/static/public/280/higgs.zip
 
-unzip higgs.zip
-gunzip HIGGS.csv.gz
+unzip scripts/datasets/higgs.zip
+gunzip scripts/datasets/HIGGS.csv.gz
 
 ./1_CompileDataset.sh HIGGS.csv 0 32768 0.5 no_header
 ```
