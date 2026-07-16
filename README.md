@@ -23,8 +23,10 @@ chmod +x ./*.sh
 ```bash
 ./0_DownloadDataset.sh https://archive.ics.uci.edu/static/public/280/higgs.zip
 
-unzip scripts/datasets/higgs.zip
-gunzip scripts/datasets/HIGGS.csv.gz
+cd scripts/datasets
+unzip higgs.zip
+gunzip HIGGS.csv.gz
+cd ../..
 
 ./1_CompileDataset.sh HIGGS.csv 0 32768 0.5 no_header
 ```
