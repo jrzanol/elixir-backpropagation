@@ -1,0 +1,18 @@
+d de Cohen - tamanho de efeito entre implementacoes
+
+Formula: d = (media_a - media_b) / desvio_padrao_combinado.
+O sinal indica a direcao; para tempos, d negativo favorece a implementacao A.
+Classificacao de |d|: <0.2 desprezivel, <0.5 pequeno, <0.8 medio, >=0.8 grande.
+Cohen d mede magnitude do efeito e nao substitui o teste de significancia de Welch.
+
+application_total: n=100/100 media=665459.765750/717205.335740 ms d=-11.525378245 |d|=11.525378245 efeito=grande menor_media=cuda
+batch_average: n=100/100 media=24.287112/26.059807 ms d=-11.230110113 |d|=11.230110113 efeito=grande menor_media=cuda
+batch_loading: n=100/100 media=46731.577120/74124.280280 ms d=-4.660189736 |d|=4.660189736 efeito=grande menor_media=cuda
+compilation: n=100/100 media=8379.294680/15552.569750 ms d=-2.338538738 |d|=2.338538738 efeito=grande menor_media=cuda
+cpu_gpu_transfer: n=100/100 media=23845.973510/31074.355810 ms d=-1.884841533 |d|=1.884841533 efeito=grande menor_media=cuda
+epoch_average: n=100/100 media=6549.575223/7020.619937 ms d=-10.908702400 |d|=10.908702400 efeito=grande menor_media=cuda
+gpu_compute: n=100/100 media=628787.817850/671904.602220 ms d=-14.367870007 |d|=14.367870007 efeito=grande menor_media=cuda
+gpu_cpu_transfer: n=100/100 media=83.983820/3910.232300 ms d=-27.503480761 |d|=27.503480761 efeito=grande menor_media=cuda
+model_setup: n=100/100 media=334.139060/430.113330 ms d=-4.395134982 |d|=4.395134982 efeito=grande menor_media=cuda
+prediction_total: n=100/100 media=2180.652760/6159.109410 ms d=-17.885094155 |d|=17.885094155 efeito=grande menor_media=cuda
+training_total: n=100/100 media=654957.522290/702061.993710 ms d=-10.908702400 |d|=10.908702400 efeito=grande menor_media=cuda
